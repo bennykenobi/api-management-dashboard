@@ -89,6 +89,13 @@ class TeamManagementDashboard {
             this.repoName = null;
             console.log('Running in local development mode with local files');
         }
+        
+        // Hardcoded fallback to ensure correct repository context
+        if (!this.repoOwner || !this.repoName) {
+            this.repoOwner = 'bennykenobi';
+            this.repoName = 'api-management-dashboard';
+            console.log(`✅ Hardcoded fallback set: ${this.repoOwner}/${this.repoName}`);
+        }
     }
 
     async loadData() {
@@ -161,6 +168,9 @@ class TeamManagementDashboard {
         if (valueType) {
             valueType.addEventListener('change', (e) => this.handleValueTypeChange(e.target.value));
         }
+        
+        // Populate business groups dropdown
+        this.populateBusinessGroupsSelect();
 
         // MUnit exempt checkbox
         const munitExempt = document.getElementById('munitExempt');
@@ -316,6 +326,9 @@ class TeamManagementDashboard {
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('teamModal'));
         modal.show();
+        
+        // Populate business groups dropdown when modal is shown
+        this.populateBusinessGroupsSelect();
     }
 
 
@@ -362,8 +375,8 @@ class TeamManagementDashboard {
             // Save to local data first (this part needs to be re-evaluated for actual data modification)
             await this.saveData(); // This will save the current in-memory state, not the new value
             
-            // Trigger GitHub workflow
-            await this.triggerGitHubWorkflow('add-platform-value', formData); // Event type changed
+            // Trigger GitHub workflow - use the action from formData
+            await this.triggerGitHubWorkflow(formData.action, formData);
             
             // Close modal and refresh
             const modal = bootstrap.Modal.getInstance(document.getElementById('teamModal'));
@@ -483,8 +496,8 @@ class TeamManagementDashboard {
             }
 
             const formData = {
-                action: 'delete-team',
-                teamName: teamName,
+                arrayType: 'teamNames',
+                value: teamName,
                 timestamp: new Date().toISOString()
             };
             
@@ -553,6 +566,21 @@ class TeamManagementDashboard {
         container.className = 'toast-container';
         document.body.appendChild(container);
         return container;
+    }
+    
+    populateBusinessGroupsSelect() {
+        const select = document.getElementById('businessGroups');
+        if (!select) return;
+        
+        select.innerHTML = '<option value="">Select Business Groups</option>';
+        if (this.teamsData?.validBusinessGroups) {
+            this.teamsData.validBusinessGroups.forEach(bg => {
+                const option = document.createElement('option');
+                option.value = bg;
+                option.textContent = bg;
+                select.appendChild(option);
+            });
+        }
     }
 }
 
