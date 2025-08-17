@@ -411,51 +411,88 @@ class TeamManagementDashboard {
         }
 
         try {
-            console.log(`Triggering workflow for action: ${action}`, data);
+            console.log(`Creating GitHub issue for action: ${action}`, data);
             
-            // Create the repository dispatch payload
+            // Create a GitHub issue that the workflow will monitor
+            const issueTitle = `[AUTOMATED] ${action}: ${data.businessGroup || data.teamName || 'New Value'}`;
+            const issueBody = this.createIssueBody(action, data);
+            
+            // Create the issue payload with proper labels for workflow triggering
             const payload = {
-                event_type: action,
-                client_payload: data
+                title: issueTitle,
+                body: issueBody,
+                labels: ['workflow-trigger', action] // workflow-trigger label is required
             };
             
-            // Make the actual API call to trigger the workflow
-            // Try to use GitHub's built-in authentication context first
-            const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/dispatches`, {
+            // Make the API call to create an issue
+            const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/issues`, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json',
-                    // GitHub Pages may have access to the repository context
-                    // If this fails, we'll fall back to other methods
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
             
             if (response.ok) {
-                this.showSuccess(`Workflow triggered for ${action}. Check GitHub for the created PR.`);
-                console.log('Workflow triggered successfully');
+                const issue = await response.json();
+                console.log('GitHub issue created successfully:', issue);
+                this.showSuccess('Request submitted successfully! A GitHub issue has been created and will be processed automatically. Check the Issues tab for progress.');
             } else {
                 const errorData = await response.json();
-                console.error('GitHub API error:', errorData);
+                console.error('Failed to create GitHub issue:', errorData);
                 
                 if (response.status === 401) {
-                    this.showError('Authentication required. For enterprise repositories, you may need to configure a GitHub App or use a personal access token.');
-                    console.log('Authentication failed. Consider these options:');
-                    console.log('1. Create a GitHub App with repository permissions');
-                    console.log('2. Use a personal access token with repo scope');
-                    console.log('3. Configure repository secrets for automated workflows');
+                    this.showError('Authentication failed. Please ensure you are logged into GitHub and have write access to this repository.');
                 } else {
-                    this.showError(`Failed to trigger workflow: ${errorData.message || 'Unknown error'}`);
+                    this.showError(`Failed to submit request: ${errorData.message || 'Unknown error'}`);
                 }
             }
         } catch (error) {
-            console.error('Failed to trigger workflow:', error);
-            this.showError('Failed to trigger workflow. Check console for details.');
+            console.error('Error creating GitHub issue:', error);
+            this.showError('Error submitting request: ' + error.message);
         }
     }
 
 
+
+    createIssueBody(action, data) {
+        let body = `**Action:** ${action}\\n`;
+        body += `**Timestamp:** ${new Date().toISOString()}\\n\\n`;
+        
+        if (action === 'add-business-group') {
+            body += `**Business Group:** ${data.businessGroup}\\n`;
+            body += `\\nThis issue was automatically created to request adding a new business group to the platform configuration.\\n\\n`;
+            body += `### Next Steps:\\n`;
+            body += `1. Review the request\\n`;
+            body += `2. The workflow will automatically process this request\\n`;
+            body += `3. A PR will be created for your review\\n`;
+        } else if (action === 'add-team') {
+            body += `**Team Name:** ${data.teamName}\\n`;
+            body += `**Team Owner:** ${data.teamOwner}\\n`;
+            body += `**Owner Email:** ${data.teamOwnerEmail}\\n`;
+            if (data.cmdbTeamName) {
+                body += `**CMDB Assignment Group:** ${data.cmdbTeamName}\\n`;
+            }
+            if (data.businessGroups && data.businessGroups.length > 0) {
+                body += `**Business Groups:** ${data.businessGroups.join(', ')}\\n`;
+            }
+            body += `\\nThis issue was automatically created to request adding a new team to the platform configuration.\\n\\n`;
+            body += `### Next Steps:\\n`;
+            body += `1. Review the request\\n`;
+            body += `2. The workflow will automatically process this request\\n`;
+            body += `3. A PR will be created for your review\\n`;
+        } else if (action === 'delete-team') {
+            body += `**Team Name:** ${data.teamName}\\n`;
+            body += `\\nThis issue was automatically created to request deleting a team from the platform configuration.\\n\\n`;
+            body += `### Next Steps:\\n`;
+            body += `1. Review the request\\n`;
+            body += `2. The workflow will automatically process this request\\n`;
+            body += `3. A PR will be created for your review\\n`;
+        }
+        
+        return body;
+    }
 
     async getTeamApis(teamName) {
         // Check if the team has any APIs assigned
@@ -496,12 +533,12 @@ class TeamManagementDashboard {
             }
 
             const formData = {
-                arrayType: 'teamNames',
-                value: teamName,
+                action: 'delete-team',
+                teamName: teamName,
                 timestamp: new Date().toISOString()
             };
             
-            await this.triggerGitHubWorkflow('delete-platform-value', formData);
+            await this.triggerGitHubWorkflow('delete-team', formData);
             this.showSuccess('Team deleted successfully');
             this.renderDashboard();
         } catch (error) {
