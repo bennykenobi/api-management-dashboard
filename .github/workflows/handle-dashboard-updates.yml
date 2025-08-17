@@ -2,7 +2,6 @@ name: Handle Dashboard Updates
 
 on:
   repository_dispatch:
-    types: [dashboard-update]
 
 jobs:
   update-data:
@@ -29,12 +28,16 @@ jobs:
           echo "data=$(echo '${{ github.event.client_payload.data }}' | jq -c '.')" >> $GITHUB_OUTPUT
           echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
           
-      - name: Update teams.json
+      - name: Update valid-platform-values.json
         if: steps.parse-payload.outputs.action == 'update-teams'
         run: |
-          # Load current teams.json
-          teams_file="src/data/teams.json"
-          teams_data=$(cat "$teams_file")
+          # Load current valid-platform-values.json
+          values_file="src/data/valid-platform-values.json"
+          if [ ! -f "$values_file" ]; then
+            echo "Error: $values_file not found"
+            exit 1
+          fi
+          values_data=$(cat "$values_file")
           
           # Parse the update data
           update_data='${{ steps.parse-payload.outputs.data }}'
@@ -47,25 +50,25 @@ jobs:
             business_groups=$(echo "$update_data" | jq -r '.businessGroups[]')
             
             # Add to validTeamNames if not exists
-            if ! echo "$teams_data" | jq -e --arg team "$team_name" '.validTeamNames | contains([$team])' > /dev/null; then
-              teams_data=$(echo "$teams_data" | jq --arg team "$team_name" '.validTeamNames += [$team]')
+            if ! echo "$values_data" | jq -e --arg team "$team_name" '.validTeamNames | contains([$team])' > /dev/null; then
+              values_data=$(echo "$values_data" | jq --arg team "$team_name" '.validTeamNames += [$team]')
             fi
             
             # Add to validCmdbTeamNames if not exists
-            if ! echo "$teams_data" | jq -e --arg cmdb "$cmdb_name" '.validCmdbTeamNames | contains([$cmdb])' > /dev/null; then
-              teams_data=$(echo "$teams_data" | jq --arg cmdb "$cmdb_name" '.validCmdbTeamNames += [$cmdb]')
+            if ! echo "$values_data" | jq -e --arg cmdb "$cmdb_name" '.validCmdbTeamNames | contains([$cmdb])' > /dev/null; then
+              values_data=$(echo "$values_data" | jq --arg cmdb "$cmdb_name" '.validCmdbTeamNames += [$cmdb]')
             fi
             
             # Add new business groups if not exists
             for bg in $business_groups; do
-              if ! echo "$teams_data" | jq -e --arg bg "$bg" '.validBusinessGroups | contains([$bg])' > /dev/null; then
-                teams_data=$(echo "$teams_data" | jq --arg bg "$bg" '.validBusinessGroups += [$bg]')
+              if ! echo "$values_data" | jq -e --arg bg "$bg" '.validBusinessGroups | contains([$bg])' > /dev/null; then
+                values_data=$(echo "$values_data" | jq --arg bg "$bg" '.validBusinessGroups += [$bg]')
               fi
             done
           fi
           
-          # Save updated teams.json
-          echo "$teams_data" | jq '.' > "$teams_file"
+          # Save updated valid-platform-values.json
+          echo "$values_data" | jq '.' > "$values_file"
           
       - name: Create team API file
         if: steps.parse-payload.outputs.action == 'add-team'

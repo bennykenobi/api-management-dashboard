@@ -2,7 +2,6 @@ name: Delete Platform Values
 
 on:
   repository_dispatch:
-    types: [delete-platform-values]
 
 jobs:
   delete-values:

@@ -2,7 +2,6 @@ name: Add Platform Values
 
 on:
   repository_dispatch:
-    types: [add-platform-values]
 
 jobs:
   add-values:

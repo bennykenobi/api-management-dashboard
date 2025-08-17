@@ -2,7 +2,6 @@ name: Handle Team Rename (Cascade Update)
 
 on:
   repository_dispatch:
-    types: [team-rename]
 
 jobs:
   cascade-update:
@@ -24,22 +23,22 @@ jobs:
           echo "new_name=$(echo '${{ github.event.client_payload.newName }}' | jq -r '.')" >> $GITHUB_OUTPUT
           echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
           
-      - name: Update teams.json
+      - name: Update valid-platform-values.json
         run: |
           old_name="${{ steps.parse-rename.outputs.old_name }}"
           new_name="${{ steps.parse-rename.outputs.new_name }}"
           
-          # Update teams.json
-          teams_file="src/data/teams.json"
-          teams_data=$(cat "$teams_file")
+          # Update valid-platform-values.json
+          values_file="src/data/valid-platform-values.json"
+          values_data=$(cat "$values_file")
           
           # Replace old team name with new one
-          teams_data=$(echo "$teams_data" | jq --arg old "$old_name" --arg new "$new_name" '
+          values_data=$(echo "$values_data" | jq --arg old "$old_name" --arg new "$new_name" '
             .validTeamNames |= map(if . == $old then $new else . end)
           ')
           
-          # Save updated teams.json
-          echo "$teams_data" | jq '.' > "$teams_file"
+          # Save updated valid-platform-values.json
+          echo "$values_data" | jq '.' > "$values_file"
           
       - name: Rename team API file
         run: |
@@ -110,13 +109,13 @@ jobs:
             This PR was automatically created to handle a team rename operation.
             
             ### Changes Made:
-            - Updated team name in `teams.json`
+            - Updated team name in `valid-platform-values.json`
             - Renamed team API file from `${{ steps.parse-rename.outputs.old_name }}-mule-apis.json` to `${{ steps.parse-rename.outputs.new_name }}-mule-apis.json`
             - Updated all API references to use the new team name
             - Updated file content to reflect the new team name
             
             ### Files Modified:
-            - `src/data/teams.json`
+            - `src/data/valid-platform-values.json`
             - `src/data/${{ steps.parse-rename.outputs.old_name }}-mule-apis.json` → `src/data/${{ steps.parse-rename.outputs.new_name }}-mule-apis.json`
             - Any other API files that referenced the old team name
             
