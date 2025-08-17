@@ -66,19 +66,23 @@ class APIManagementDashboard {
         console.log('Origin:', window.location.origin);
         
         if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
+            // Extract username from hostname (e.g., bennykenobi.github.io)
+            const username = window.location.hostname.split('.')[0];
+            console.log(`Extracted username from hostname: ${username}`);
+            
             const pathParts = window.location.pathname.split('/').filter(part => part.length > 0);
             console.log('GitHub Pages path parts (filtered):', pathParts);
             console.log('Path parts length:', pathParts.length);
             
-            // GitHub Pages URL structure: /username/repository-name/
-            if (pathParts.length >= 2) {
-                this.repoOwner = pathParts[0];
-                // Remove any .html extension from the repository name
-                this.repoName = pathParts[1].replace('.html', '');
+            // GitHub Pages URL structure: username.github.io/repository-name/page.html
+            if (pathParts.length >= 1) {
+                this.repoOwner = username;
+                // The first path part is the repository name (remove .html if present)
+                this.repoName = pathParts[0].replace('.html', '');
                 console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             } else {
-                console.warn('❌ Not enough path parts to detect repository context');
-                console.log('Expected at least 2 parts, got:', pathParts.length);
+                console.warn('❌ No path parts to detect repository context');
+                console.log('Expected at least 1 part, got:', pathParts.length);
             }
         } else {
             this.repoOwner = null;
