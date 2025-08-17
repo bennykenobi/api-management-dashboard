@@ -23,6 +23,11 @@ class APIManagementDashboard {
                 this.fallbackContextDetection();
             }
             
+            // If still no context, try manual override
+            if (!this.repoOwner || !this.repoName) {
+                this.manualContextOverride();
+            }
+            
             // Test the GitHub API connection
             if (this.repoOwner && this.repoName) {
                 await this.testGitHubConnection();
@@ -54,22 +59,26 @@ class APIManagementDashboard {
     }
 
     async detectGitHubContext() {
+        console.log('=== GITHUB CONTEXT DETECTION START ===');
         console.log('Current URL:', window.location.href);
         console.log('Hostname:', window.location.hostname);
         console.log('Pathname:', window.location.pathname);
+        console.log('Origin:', window.location.origin);
         
         if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
             const pathParts = window.location.pathname.split('/').filter(part => part.length > 0);
             console.log('GitHub Pages path parts (filtered):', pathParts);
+            console.log('Path parts length:', pathParts.length);
             
             // GitHub Pages URL structure: /username/repository-name/
             if (pathParts.length >= 2) {
                 this.repoOwner = pathParts[0];
                 // Remove any .html extension from the repository name
                 this.repoName = pathParts[1].replace('.html', '');
-                console.log(`Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
+                console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             } else {
-                console.warn('Not enough path parts to detect repository context');
+                console.warn('❌ Not enough path parts to detect repository context');
+                console.log('Expected at least 2 parts, got:', pathParts.length);
             }
         } else {
             this.repoOwner = null;
@@ -78,6 +87,7 @@ class APIManagementDashboard {
         }
         
         console.log('Final context:', { repoOwner: this.repoOwner, repoName: this.repoName });
+        console.log('=== GITHUB CONTEXT DETECTION END ===');
     }
     
     fallbackContextDetection() {
@@ -129,6 +139,50 @@ class APIManagementDashboard {
         }
         
         console.warn('All fallback context detection methods failed');
+    }
+    
+    manualContextOverride() {
+        console.log('Attempting manual context override...');
+        
+        // Based on the URL: https://bennykenobi.github.io/api-management-dashboard/api-management.html
+        // We can extract the username and repository name directly
+        
+        const currentUrl = window.location.href;
+        console.log('Current URL for manual override:', currentUrl);
+        
+        // Extract username from hostname (e.g., bennykenobi.github.io)
+        const hostname = window.location.hostname;
+        if (hostname.includes('github.io')) {
+            const username = hostname.split('.')[0];
+            console.log(`Extracted username from hostname: ${username}`);
+            
+            // Extract repository name from pathname
+            const pathname = window.location.pathname;
+            const pathParts = pathname.split('/').filter(part => part.length > 0);
+            console.log('Path parts for manual override:', pathParts);
+            
+            // The first part should be the repository name (before the .html file)
+            if (pathParts.length > 0) {
+                const repoName = pathParts[0];
+                console.log(`Extracted repository name from path: ${repoName}`);
+                
+                // Set the repository context
+                this.repoOwner = username;
+                this.repoName = repoName;
+                
+                console.log(`✅ Manual override set: ${this.repoOwner}/${this.repoName}`);
+                console.log('This should resolve the GitHub API loading issue');
+                return;
+            }
+        }
+        
+        // Fallback: hardcode the known values
+        console.log('Using hardcoded fallback values...');
+        this.repoOwner = 'bennykenobi';
+        this.repoName = 'api-management-dashboard';
+        
+        console.log(`✅ Hardcoded override set: ${this.repoOwner}/${this.repoName}`);
+        console.log('Manual context override completed');
     }
     
     async testGitHubConnection() {

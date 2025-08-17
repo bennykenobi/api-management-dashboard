@@ -1,6 +1,6 @@
-// API Management Dashboard - Main Application Logic
+// Teams, CMDB, and Business Group Management Dashboard
 
-class APIManagementDashboard {
+class TeamManagementDashboard {
     constructor() {
         this.teamsData = null;
         this.githubToken = null;
@@ -78,14 +78,15 @@ class APIManagementDashboard {
         try {
             console.log(`Attempting to load file: ${filePath}`);
             if (this.repoOwner && this.repoName) {
-                // Load from GitHub API - files are in the root of the repository
-                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${filePath}`);
-                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${filePath}`);
-                if (!response.ok) throw new Error(`Failed to load ${filePath}`);
+                // Load from GitHub API - files are in the docs/ directory
+                const fullPath = `docs/${filePath}`;
+                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${fullPath}`);
+                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`);
+                if (!response.ok) throw new Error(`Failed to load ${fullPath}`);
                 
                 const data = await response.json();
                 const content = atob(data.content);
-                console.log(`Successfully loaded ${filePath} from GitHub API`);
+                console.log(`Successfully loaded ${fullPath} from GitHub API`);
                 return JSON.parse(content);
             } else {
                 // Load from local file system (for development)
@@ -393,8 +394,44 @@ class APIManagementDashboard {
 
 
 
+    async getTeamApis(teamName) {
+        // Check if the team has any APIs assigned
+        const fileName = `${teamName.toLowerCase().replace(/\s+/g, '-')}-mule-apis.json`;
+        try {
+            if (this.repoOwner && this.repoName) {
+                // Load from GitHub API to check if team has APIs
+                const fullPath = `docs/${fileName}`;
+                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const content = atob(data.content);
+                    const teamData = JSON.parse(content);
+                    return teamData.apis || [];
+                }
+            } else {
+                // For local development, try to load the file directly
+                const response = await fetch(fileName);
+                if (response.ok) {
+                    const teamData = await response.json();
+                    return teamData.apis || [];
+                }
+            }
+            return [];
+        } catch (error) {
+            console.warn(`Could not check APIs for team ${teamName}:`, error);
+            return [];
+        }
+    }
+
     async deleteTeam(teamName) {
         try {
+            // Check if team has APIs assigned - teams can only be deleted if they have no APIs
+            const teamApis = await this.getTeamApis(teamName);
+            if (teamApis && teamApis.length > 0) {
+                this.showError(`Cannot delete team "${teamName}" - it has ${teamApis.length} API(s) assigned. Please reassign APIs to other teams first.`);
+                return;
+            }
+
             const formData = {
                 action: 'delete-team',
                 teamName: teamName,
@@ -473,7 +510,7 @@ class APIManagementDashboard {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing dashboard...');
     try {
-        window.dashboard = new APIManagementDashboard();
+        window.dashboard = new TeamManagementDashboard();
         window.dashboard.init(); // Call init() after the dashboard instance is created
     } catch (error) {
         console.error('Failed to create dashboard instance:', error);
