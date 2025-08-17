@@ -28,6 +28,10 @@ jobs:
               echo "action=add-team" >> $GITHUB_OUTPUT
             elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'delete-team'; then
               echo "action=delete-team" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'add-api'; then
+              echo "action=add-api" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'reassign-api'; then
+              echo "action=reassign-api" >> $GITHUB_OUTPUT
             fi
           else
             echo "is_workflow_request=false" >> $GITHUB_OUTPUT
@@ -68,6 +72,40 @@ jobs:
           elif [ "$action" = "add-business-group" ]; then
             businessGroup=$(echo "$issue_body" | grep -o '**Business Group:** [^*]*' | sed 's/\*\*Business Group:\*\* //')
             echo "businessGroup=$businessGroup" >> $GITHUB_OUTPUT
+          elif [ "$action" = "add-api" ]; then
+            apiName=$(echo "$issue_body" | grep -o '**API Name:** [^*]*' | sed 's/\*\*API Name:\*\* //')
+            assetId=$(echo "$issue_body" | grep -o '**Asset ID:** [^*]*' | sed 's/\*\*Asset ID:\*\* //')
+            teamName=$(echo "$issue_body" | grep -o '**Team Name:** [^*]*' | sed 's/\*\*Team Name:\*\* //')
+            apiOwner=$(echo "$issue_body" | grep -o '**API Owner:** [^*]*' | sed 's/\*\*API Owner:\*\* //')
+            apiOwnerEmail=$(echo "$issue_body" | grep -o '**API Owner Email:** [^*]*' | sed 's/\*\*API Owner Email:\*\* //')
+            munitExempt=$(echo "$issue_body" | grep -o '**MUnit Testing Exempt:** [^*]*' | sed 's/\*\*MUnit Testing Exempt:\*\* //')
+            customCoverage=$(echo "$issue_body" | grep -o '**Custom Coverage %:** [^*]*' | sed 's/\*\*Custom Coverage %:\*\* //')
+            
+            echo "apiName=$apiName" >> $GITHUB_OUTPUT
+            echo "assetId=$assetId" >> $GITHUB_OUTPUT
+            echo "teamName=$teamName" >> $GITHUB_OUTPUT
+            echo "apiOwner=$apiOwner" >> $GITHUB_OUTPUT
+            echo "apiOwnerEmail=$apiOwnerEmail" >> $GITHUB_OUTPUT
+            echo "munitExempt=$munitExempt" >> $GITHUB_OUTPUT
+            echo "customCoverage=$customCoverage" >> $GITHUB_OUTPUT
+          elif [ "$action" = "reassign-api" ]; then
+            apiName=$(echo "$issue_body" | grep -o '**API Name:** [^*]*' | sed 's/\*\*API Name:\*\* //')
+            currentTeam=$(echo "$issue_body" | grep -o '**Current Team:** [^*]*' | sed 's/\*\*Current Team:\*\* //')
+            newTeam=$(echo "$issue_body" | grep -o '**New Team:** [^*]*' | sed 's/\*\*New Team:\*\* //')
+            assetId=$(echo "$issue_body" | grep -o '**Asset ID:** [^*]*' | sed 's/\*\*Asset ID:\*\* //')
+            apiOwner=$(echo "$issue_body" | grep -o '**New API Owner:** [^*]*' | sed 's/\*\*New API Owner:\*\* //')
+            apiOwnerEmail=$(echo "$issue_body" | grep -o '**New API Owner Email:** [^*]*' | sed 's/\*\*New API Owner Email:\*\* //')
+            munitExempt=$(echo "$issue_body" | grep -o '**MUnit Testing Exempt:** [^*]*' | sed 's/\*\*MUnit Testing Exempt:\*\* //')
+            customCoverage=$(echo "$issue_body" | grep -o '**Custom Coverage %:** [^*]*' | sed 's/\*\*Custom Coverage %:\*\* //')
+            
+            echo "apiName=$apiName" >> $GITHUB_OUTPUT
+            echo "currentTeam=$currentTeam" >> $GITHUB_OUTPUT
+            echo "newTeam=$newTeam" >> $GITHUB_OUTPUT
+            echo "assetId=$assetId" >> $GITHUB_OUTPUT
+            echo "apiOwner=$apiOwner" >> $GITHUB_OUTPUT
+            echo "apiOwnerEmail=$apiOwnerEmail" >> $GITHUB_OUTPUT
+            echo "munitExempt=$munitExempt" >> $GITHUB_OUTPUT
+            echo "customCoverage=$customCoverage" >> $GITHUB_OUTPUT
           fi
           
           timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -82,11 +120,11 @@ jobs:
           
           # Validate action type
           case "${{ steps.parse-payload.outputs.action }}" in
-            "add-team"|"add-business-group"|"delete-team")
+            "add-team"|"add-business-group"|"delete-team"|"add-api"|"reassign-api")
               echo "Valid action: ${{ steps.parse-payload.outputs.action }}"
               ;;
             *)
-              echo "Error: Invalid action. Must be: add-team, add-business-group, or delete-team"
+              echo "Error: Invalid action. Must be: add-team, add-business-group, delete-team, add-api, or reassign-api"
               exit 1
               ;;
           esac
@@ -105,6 +143,16 @@ jobs:
           elif [ "${{ steps.parse-payload.outputs.action }}" = "delete-team" ]; then
             if [ -z "${{ steps.parse-payload.outputs.teamName }}" ]; then
               echo "Error: teamName is required for delete-team"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-api" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.apiName }}" ] || [ -z "${{ steps.parse-payload.outputs.assetId }}" ] || [ -z "${{ steps.parse-payload.outputs.teamName }}" ] || [ -z "${{ steps.parse-payload.outputs.apiOwner }}" ] || [ -z "${{ steps.parse-payload.outputs.apiOwnerEmail }}" ]; then
+              echo "Error: apiName, assetId, teamName, apiOwner, and apiOwnerEmail are required for add-api"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "reassign-api" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.apiName }}" ] || [ -z "${{ steps.parse-payload.outputs.currentTeam }}" ] || [ -z "${{ steps.parse-payload.outputs.newTeam }}" ] || [ -z "${{ steps.parse-payload.outputs.assetId }}" ] || [ -z "${{ steps.parse-payload.outputs.apiOwner }}" ] || [ -z "${{ steps.parse-payload.outputs.apiOwnerEmail }}" ]; then
+              echo "Error: apiName, currentTeam, newTeam, assetId, apiOwner, and apiOwnerEmail are required for reassign-api"
               exit 1
             fi
           fi
@@ -165,6 +213,61 @@ jobs:
             team_name='${{ steps.parse-payload.outputs.teamName }}'
             updated_data=$(echo "$current_data" | jq --arg team "$team_name" 'del(.validTeamNames[] | select(.name == $team))')
             echo "Removed team '$team_name' from validTeamNames"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-api" ]; then
+            # Add API to the appropriate team file
+            team_name='${{ steps.parse-payload.outputs.teamName }}'
+            api_name='${{ steps.parse-payload.outputs.apiName }}'
+            asset_id='${{ steps.parse-payload.outputs.assetId }}'
+            api_owner='${{ steps.parse-payload.outputs.apiOwner }}'
+            api_owner_email='${{ steps.parse-payload.outputs.apiOwnerEmail }}'
+            munit_exempt='${{ steps.parse-payload.outputs.munitExempt }}'
+            custom_coverage='${{ steps.parse-payload.outputs.customCoverage }}'
+            
+            # Create API object
+            api_object=$(jq -n --arg name "$api_name" --arg assetId "$asset_id" --arg owner "$api_owner" --arg team "$team_name" --arg email "$api_owner_email" --argjson exempt "$([ "$munit_exempt" = "Yes" ] && echo "true" || echo "false")" --arg coverage "$custom_coverage" --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '{apiName: $name, assetId: $assetId, apiOwner: $owner, teamName: $team, apiOwnerEmail: $email, munitExempt: $exempt, customCoverage: ($coverage | if . == "" or . == "null" then null else tonumber end), businessGroups: ["Core Platform"], lastUpdated: $timestamp}')
+            
+            # Update the team's API file
+            team_file="docs/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            if [ -f "$team_file" ]; then
+              # Add API to existing team file
+              jq --argjson api "$api_object" '.apis += [$api]' "$team_file" > "$team_file.tmp" && mv "$team_file.tmp" "$team_file"
+              echo "Added API '$api_name' to team '$team_name'"
+            else
+              # Create new team file if it doesn't exist
+              echo '{"teamName": "'"$team_name"'", "apis": ['"$api_object"']}' > "$team_file"
+              echo "Created team file '$team_file' with API '$api_name'"
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "reassign-api" ]; then
+            # Reassign API from one team to another
+            api_name='${{ steps.parse-payload.outputs.apiName }}'
+            current_team='${{ steps.parse-payload.outputs.currentTeam }}'
+            new_team='${{ steps.parse-payload.outputs.newTeam }}'
+            asset_id='${{ steps.parse-payload.outputs.assetId }}'
+            api_owner='${{ steps.parse-payload.outputs.apiOwner }}'
+            api_owner_email='${{ steps.parse-payload.outputs.apiOwnerEmail }}'
+            munit_exempt='${{ steps.parse-payload.outputs.munitExempt }}'
+            custom_coverage='${{ steps.parse-payload.outputs.customCoverage }}'
+            
+            # Remove API from current team file
+            current_team_file="docs/$(echo "$current_team" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            if [ -f "$current_team_file" ]; then
+              jq --arg name "$api_name" 'del(.apis[] | select(.apiName == $name))' "$current_team_file" > "$current_team_file.tmp" && mv "$current_team_file.tmp" "$current_team_file"
+              echo "Removed API '$api_name' from team '$current_team'"
+            fi
+            
+            # Add API to new team file
+            new_team_file="docs/$(echo "$new_team" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            if [ -f "$new_team_file" ]; then
+              # Create updated API object
+              api_object=$(jq -n --arg name "$api_name" --arg assetId "$asset_id" --arg owner "$api_owner" --arg team "$new_team" --arg email "$api_owner_email" --argjson exempt "$([ "$munit_exempt" = "Yes" ] && echo "true" || echo "false")" --arg coverage "$custom_coverage" --arg timestamp "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '{apiName: $name, assetId: $assetId, apiOwner: $owner, teamName: $team, apiOwnerEmail: $email, munitExempt: $exempt, customCoverage: ($coverage | if . == "" or . == "null" then null else tonumber end), businessGroups: ["Core Platform"], lastUpdated: $timestamp}')
+              
+              # Add API to new team file
+              jq --argjson api "$api_object" '.apis += [$api]' "$new_team_file" > "$new_team_file.tmp" && mv "$new_team_file.tmp" "$new_team_file"
+              echo "Added API '$api_name' to team '$new_team'"
+            else
+              echo "Error: New team file '$new_team_file' does not exist"
+              exit 1
+            fi
           fi
           
           # Save updated file
@@ -191,6 +294,10 @@ jobs:
             commit_msg="Add Business Group: ${{ steps.parse-payload.outputs.businessGroup }}"
           elif [ "${{ steps.parse-payload.outputs.action }}" = "delete-team" ]; then
             commit_msg="Delete Team: ${{ steps.parse-payload.outputs.teamName }}"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-api" ]; then
+            commit_msg="Add API: ${{ steps.parse-payload.outputs.apiName }} to team ${{ steps.parse-payload.outputs.teamName }}"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "reassign-api" ]; then
+            commit_msg="Reassign API: ${{ steps.parse-payload.outputs.apiName }} from ${{ steps.parse-payload.outputs.currentTeam }} to ${{ steps.parse-payload.outputs.newTeam }}"
           fi
           
           git commit -m "$commit_msg"
@@ -199,7 +306,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || steps.parse-payload.outputs.action == 'add-business-group' && 'Add Business Group' || 'Delete Team' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.businessGroup }}"
+          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || steps.parse-payload.outputs.action == 'add-business-group' && 'Add Business Group' || steps.parse-payload.outputs.action == 'delete-team' && 'Delete Team' || steps.parse-payload.outputs.action == 'add-api' && 'Add API' || steps.parse-payload.outputs.action == 'reassign-api' && 'Reassign API' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.businessGroup || steps.parse-payload.outputs.apiName }}"
           body: |
             ## Add Platform Value
             
@@ -209,10 +316,12 @@ jobs:
             This PR was automatically created to add a new value to the platform configuration.
             
             ### Changes Made:
-            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || steps.parse-payload.outputs.action == 'add-business-group' && format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) || format('Deleted team `{0}`', steps.parse-payload.outputs.teamName) }}
+            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || steps.parse-payload.outputs.action == 'add-business-group' && format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) || steps.parse-payload.outputs.action == 'delete-team' && format('Deleted team `{0}`', steps.parse-payload.outputs.teamName) || steps.parse-payload.outputs.action == 'add-api' && format('Added API `{0}` to team `{1}`', steps.parse-payload.outputs.apiName, steps.parse-payload.outputs.teamName) || steps.parse-payload.outputs.action == 'reassign-api' && format('Reassigned API `{0}` from team `{1}` to team `{2}`', steps.parse-payload.outputs.apiName, steps.parse-payload.outputs.currentTeam, steps.parse-payload.outputs.newTeam) }}
             - Updated `docs/valid-platform-values.json`
             ${{ steps.parse-payload.outputs.action == 'add-team' && '- Created team API file' || '' }}
             ${{ steps.parse-payload.outputs.action == 'add-team' && steps.parse-payload.outputs.cmdbTeamName && steps.parse-payload.outputs.cmdbTeamName != 'null' && '- Automatically added CMDB Assignment Group' || '' }}
+            ${{ steps.parse-payload.outputs.action == 'add-api' && '- Updated team API file' || '' }}
+            ${{ steps.parse-payload.outputs.action == 'reassign-api' && '- Updated team API files' || '' }}
             
             **Original Issue:** #${{ github.event.issue.number }}
             
