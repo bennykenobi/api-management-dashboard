@@ -1,0 +1,16 @@
+{
+  "teamName": "Integration Team",
+  "apis": [
+    {
+      "apiName": "Payment Gateway API",
+      "assetId": "payment-gateway-v1",
+      "apiOwner": "mike.wilson@company.com",
+      "teamName": "Integration Team",
+      "apiOwnerEmail": "mike.wilson@company.com",
+      "munitExempt": false,
+      "customCoverage": null,
+      "businessGroups": ["Customer Experience"],
+      "lastUpdated": "2025-01-17T18:20:00Z"
+    }
+  ]
+} 

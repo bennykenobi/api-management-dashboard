@@ -9,36 +9,59 @@ class APIManagementDashboard {
         this.githubToken = null;
         this.repoOwner = null;
         this.repoName = null;
+        this.initialized = false;
         
-        this.init();
+        // Don't call init() here - let the DOM ready handler do it
     }
 
     async init() {
         try {
+            console.log('Starting dashboard initialization...');
             await this.detectGitHubContext();
+            console.log('GitHub context detected:', { repoOwner: this.repoOwner, repoName: this.repoName });
             await this.loadData();
+            console.log('Data loaded successfully');
             this.setupEventListeners();
+            console.log('Event listeners set up');
             this.renderDashboard();
+            console.log('Dashboard rendered successfully');
+            this.initialized = true;
         } catch (error) {
             console.error('Failed to initialize dashboard:', error);
-            this.showError('Failed to initialize dashboard. Please check the console for details.');
+            // Don't call showError during initialization - display error directly
+            this.displayInitError('Failed to initialize dashboard. Please check the console for details.');
+            throw error; // Re-throw to let the caller know initialization failed
         }
     }
 
+    displayInitError(message) {
+        // Display initialization error directly in the page
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger m-4';
+        errorDiv.innerHTML = `
+            <h4>Dashboard Initialization Failed</h4>
+            <p>${message}</p>
+            <p><strong>Error details:</strong> Check the browser console for more information.</p>
+        `;
+        
+        // Insert at the top of the body
+        document.body.insertBefore(errorDiv, document.body.firstChild);
+    }
+
     async detectGitHubContext() {
-        // Try to detect if we're running on GitHub Pages
-        if (window.location.hostname.includes('github.io')) {
+        // Only detect GitHub context if we're actually on GitHub Pages
+        if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
             const pathParts = window.location.pathname.split('/');
             if (pathParts.length >= 3) {
                 this.repoOwner = pathParts[1];
                 this.repoName = pathParts[2];
                 console.log(`Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             }
-        }
-        
-        // For local development, we'll use mock data
-        if (!this.repoOwner || !this.repoName) {
-            console.log('Running in local development mode with mock data');
+        } else {
+            // For local development, explicitly set to null
+            this.repoOwner = null;
+            this.repoName = null;
+            console.log('Running in local development mode with local files');
         }
     }
 
@@ -59,18 +82,24 @@ class APIManagementDashboard {
 
     async loadFile(filePath) {
         try {
+            console.log(`Attempting to load file: ${filePath}`);
             if (this.repoOwner && this.repoName) {
-                // Load from GitHub API
+                // Load from GitHub API - files are in the root of the repository
+                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${filePath}`);
                 const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${filePath}`);
                 if (!response.ok) throw new Error(`Failed to load ${filePath}`);
                 
                 const data = await response.json();
                 const content = atob(data.content);
+                console.log(`Successfully loaded ${filePath} from GitHub API`);
                 return JSON.parse(content);
             } else {
                 // Load from local file system (for development)
-                const response = await fetch(`../${filePath}`);
+                // Since we're in docs/ folder and data files are also here
+                console.log(`Loading from local file system: ${filePath}`);
+                const response = await fetch(filePath);
                 if (!response.ok) throw new Error(`Failed to load ${filePath}`);
+                console.log(`Successfully loaded ${filePath} from local file system`);
                 return await response.json();
             }
         } catch (error) {
@@ -100,49 +129,89 @@ class APIManagementDashboard {
 
     setupEventListeners() {
         // Search functionality
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            this.currentSearchTerm = e.target.value;
-            this.renderDashboard();
-        });
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.currentSearchTerm = e.target.value;
+                this.renderDashboard();
+            });
+        }
 
-        document.getElementById('clearSearch').addEventListener('click', () => {
-            document.getElementById('searchInput').value = '';
-            this.currentSearchTerm = '';
-            this.renderDashboard();
-        });
+        const clearSearch = document.getElementById('clearSearch');
+        if (clearSearch) {
+            clearSearch.addEventListener('click', () => {
+                if (searchInput) {
+                    searchInput.value = '';
+                    this.currentSearchTerm = '';
+                    this.renderDashboard();
+                }
+            });
+        }
 
         // Export functionality
-        document.getElementById('exportCsv').addEventListener('click', () => this.exportData('csv'));
-        document.getElementById('exportJson').addEventListener('click', () => this.exportData('json'));
+        const exportCsv = document.getElementById('exportCsv');
+        if (exportCsv) {
+            exportCsv.addEventListener('click', () => this.exportData('csv'));
+        }
+        
+        const exportJson = document.getElementById('exportJson');
+        if (exportJson) {
+            exportJson.addEventListener('click', () => this.exportData('json'));
+        }
 
         // Team filter
-        document.getElementById('teamFilter').addEventListener('change', (e) => {
-            this.currentTeamFilter = e.target.value;
-            this.renderAPIsTable();
-        });
+        const teamFilter = document.getElementById('teamFilter');
+        if (teamFilter) {
+            teamFilter.addEventListener('change', (e) => {
+                this.currentTeamFilter = e.target.value;
+                this.renderAPIsTable();
+            });
+        }
 
         // Add team button
-        document.getElementById('addTeamBtn').addEventListener('click', () => this.showTeamModal());
+        const addTeamBtn = document.getElementById('addTeamBtn');
+        if (addTeamBtn) {
+            addTeamBtn.addEventListener('click', () => this.showTeamModal());
+        }
 
         // Add API button
-        document.getElementById('addApiBtn').addEventListener('click', () => this.showAPIModal());
+        const addApiBtn = document.getElementById('addApiBtn');
+        if (addApiBtn) {
+            addApiBtn.addEventListener('click', () => this.showAPIModal());
+        }
 
         // Modal save buttons
-        document.getElementById('saveTeamBtn').addEventListener('click', () => this.saveTeam());
-        document.getElementById('saveApiBtn').addEventListener('click', () => this.saveAPI());
+        const saveTeamBtn = document.getElementById('saveTeamBtn');
+        if (saveTeamBtn) {
+            saveTeamBtn.addEventListener('click', () => this.saveTeam());
+        }
+        
+        const saveApiBtn = document.getElementById('saveApiBtn');
+        if (saveApiBtn) {
+            saveApiBtn.addEventListener('click', () => this.saveAPI());
+        }
 
         // MUnit exempt checkbox
-        document.getElementById('munitExempt').addEventListener('change', (e) => {
-            const customCoverageGroup = document.getElementById('customCoverageGroup');
-            if (e.target.checked) {
-                customCoverageGroup.style.display = 'block';
-                document.getElementById('customCoverage').required = true;
-            } else {
-                customCoverageGroup.style.display = 'none';
-                document.getElementById('customCoverage').required = false;
-                document.getElementById('customCoverage').value = '';
-            }
-        });
+        const munitExempt = document.getElementById('munitExempt');
+        if (munitExempt) {
+            munitExempt.addEventListener('change', (e) => {
+                const customCoverageGroup = document.getElementById('customCoverageGroup');
+                if (customCoverageGroup) {
+                    if (e.target.checked) {
+                        customCoverageGroup.style.display = 'block';
+                        const customCoverage = document.getElementById('customCoverage');
+                        if (customCoverage) customCoverage.required = true;
+                    } else {
+                        customCoverageGroup.style.display = 'none';
+                        const customCoverage = document.getElementById('customCoverage');
+                        if (customCoverage) {
+                            customCoverage.required = false;
+                            customCoverage.value = '';
+                        }
+                    }
+                }
+            });
+        }
     }
 
     renderDashboard() {
@@ -713,5 +782,12 @@ class APIManagementDashboard {
 
 // Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    window.dashboard = new APIManagementDashboard();
+    console.log('DOM loaded, initializing dashboard...');
+    try {
+        window.dashboard = new APIManagementDashboard();
+        window.dashboard.init(); // Call init() after the dashboard instance is created
+    } catch (error) {
+        console.error('Failed to create dashboard instance:', error);
+        document.body.innerHTML = '<div class="alert alert-danger m-4">Failed to initialize dashboard: ' + error.message + '</div>';
+    }
 }); 
