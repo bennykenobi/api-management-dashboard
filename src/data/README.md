@@ -1,60 +1,114 @@
-# Data Structure Documentation
+# Data Directory Documentation
 
-## Overview
-This directory contains the JSON configuration files for team management, API registry, and validation schemas.
+This directory contains the core data files for the API Management system. These files are managed by GitHub Actions workflows and accessed by the dashboard.
 
-## Files
+## 📁 **File Structure**
 
-### `teams.json`
-Contains lists of valid values for validation:
-- **validTeamNames**: Array of authorized team names
-- **validCmdbTeamNames**: Array of authorized CMDB team names  
-- **validBusinessGroups**: Array of authorized business groups
+### **Core Configuration Files**
+- **`valid-platform-values.json`** - Central configuration for teams, CMDB groups, and business groups
+- **`schemas.json`** - JSON Schema definitions for data validation
 
-### `{team-name}-mule-apis.json`
-Team-specific Mule API registry files containing:
-- **teamName**: Must match a value in teams.json validTeamNames
-- **apis**: Array of API objects with the following properties:
-  - **apiName**: Human-readable API name
-  - **assetId**: Unique identifier (alphanumeric, hyphens, underscores only)
-  - **apiOwner**: API owner name
-  - **teamName**: Must match parent teamName
-  - **apiOwnerEmail**: Valid email format
-  - **munitExempt**: Boolean indicating if MUnit testing is exempt
-  - **customCoverage**: Coverage percentage (0-100) if munitExempt is true, null otherwise
-  - **businessGroups**: Array of business groups (must be from teams.json validBusinessGroups)
-  - **lastUpdated**: ISO 8601 timestamp
+### **Team-Specific API Files**
+- **`{team-name}-mule-apis.json`** - Individual team API registries
+- **Naming Convention**: Team names converted to lowercase with spaces replaced by hyphens
+  - Example: "Platform Team" → `platform-team-mule-apis.json`
 
-### `schemas.json`
-JSON Schema definitions for validation:
-- **teamsSchema**: Schema for teams.json structure
-- **apiRegistrySchema**: Schema for team API registry files
+## 🔧 **Data File Details**
 
-## Validation Rules
-1. Team names must exist in teams.json validTeamNames
-2. CMDB team names must exist in teams.json validCmdbTeamNames
-3. Business groups must exist in teams.json validBusinessGroups
-4. Asset IDs must be unique across all teams
-5. If munitExempt is true, customCoverage must be a number 0-100
-6. All required fields must be present
+### **`valid-platform-values.json`**
+```json
+{
+  "validTeamNames": ["Platform Team", "Integration Team"],
+  "validCmdbTeamNames": ["PLATFORM_TEAM", "INTEGRATION_TEAM"],
+  "validBusinessGroups": ["Core Platform", "Customer Experience"]
+}
+```
 
-## File Naming Convention
-Team Mule API files should follow the pattern: `{team-name}-mule-apis.json`
-- Use lowercase with hyphens
-- Example: `platform-team-mule-apis.json`
-- Files are automatically created when new teams are added via the dashboard
+### **`{team-name}-mule-apis.json`**
+```json
+{
+  "teamName": "Platform Team",
+  "apis": [
+    {
+      "apiName": "User Management API",
+      "assetId": "user-mgmt-api-v1",
+      "teamName": "Platform Team",
+      "apiOwner": "John Doe",
+      "apiOwnerEmail": "john.doe@company.com",
+      "munitExempt": false,
+      "customCoverage": null,
+      "businessGroups": ["Core Platform"],
+      "lastUpdated": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
 
-## Dashboard Functionality
-The GitHub Pages dashboard will automatically:
-- **Create** new `{team-name}-mule-apis.json` files when teams are added
-- **Update** team names across all related files when team names change
-- **Delete** team files when teams are removed (with confirmation)
-- **Validate** all data against the schemas before saving
-- **Search** across all fields in all documents
-- **Export** data in CSV/JSON formats
+## ⚙️ **GitHub Actions Workflows**
 
-## Data Integrity
-- Changes to team names will cascade to update all related API files
-- Asset ID conflicts are prevented during validation
-- Business group references are validated against the master list
-- Automatic file creation ensures consistent structure 
+### **Data Management Workflows**
+- **`add-platform-values.yml`** - Adds new values to platform configuration
+- **`delete-platform-values.yml`** - Removes values from platform configuration
+- **`handle-dashboard-updates.yml`** - General dashboard update operations
+- **`handle-team-rename.yml`** - Cascades team name changes across all files
+
+### **Workflow Triggers**
+All workflows are triggered via `repository_dispatch` events from the dashboard:
+```javascript
+// Example payload for adding a team
+{
+  "event_type": "add-platform-values",
+  "client_payload": {
+    "arrayType": "teamNames",
+    "value": "New Team Name"
+  }
+}
+```
+
+## 🔄 **Data Flow**
+
+1. **Dashboard** → User interacts with web interface
+2. **GitHub API** → Dashboard sends `repository_dispatch` event
+3. **Workflow** → GitHub Action processes the request
+4. **Data Update** → JSON files are modified
+5. **Pull Request** → Changes are proposed for review
+6. **Merge** → Approved changes are applied to main branch
+
+## 📋 **Validation Rules**
+
+### **Asset ID Format**
+- Must contain only: alphanumeric characters, hyphens, underscores
+- Pattern: `^[a-zA-Z0-9-_]+$`
+
+### **MUnit Exemption**
+- If `munitExempt: true`, `customCoverage` is required (0-100%)
+- If `munitExempt: false`, `customCoverage` should be `null`
+
+### **Required Fields**
+- **Teams**: `teamName`, `cmdbTeamName`, `businessGroups`
+- **APIs**: `apiName`, `assetId`, `teamName`, `apiOwner`, `apiOwnerEmail`, `businessGroups`
+
+## 🚨 **Important Notes**
+
+- **No Direct Edits**: All changes must go through the dashboard → workflow → PR process
+- **File Consistency**: Team names in API files must match entries in `valid-platform-values.json`
+- **Cascade Updates**: Team renames automatically update all related files
+- **Conflict Prevention**: Asset IDs must be unique across all teams
+
+## 🔍 **Troubleshooting**
+
+### **Common Issues**
+1. **Dashboard fails to load** - Check if data files exist in root directory
+2. **Workflow errors** - Verify file paths in workflow YAML files
+3. **Data not updating** - Ensure workflows have proper permissions
+
+### **File Locations**
+- **Dashboard reads from**: Root directory (for GitHub Pages compatibility)
+- **Workflows read from**: `/src/data/` directory
+- **Both locations must be kept in sync**
+
+## 📚 **Related Documentation**
+
+- **Dashboard**: See `/docs/README.md` for user interface documentation
+- **Workflows**: See `/.github/workflows/README.md` for workflow documentation
+- **Schemas**: See `schemas.json` for detailed data validation rules 

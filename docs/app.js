@@ -45,7 +45,7 @@ class APIManagementDashboard {
     async loadData() {
         try {
             // Load teams configuration
-            this.teamsData = await this.loadFile('src/data/teams.json');
+            this.teamsData = await this.loadFile('valid-platform-values.json');
             
             // Load all team API files
             await this.loadAllTeamAPIs();
@@ -85,7 +85,7 @@ class APIManagementDashboard {
         for (const teamName of this.teamsData.validTeamNames) {
             const fileName = `${teamName.toLowerCase().replace(/\s+/g, '-')}-mule-apis.json`;
             try {
-                const teamAPIs = await this.loadFile(`src/data/${fileName}`);
+                const teamAPIs = await this.loadFile(fileName);
                 this.apisData[teamName] = teamAPIs;
             } catch (error) {
                 console.warn(`No API file found for team ${teamName}:`, error);
