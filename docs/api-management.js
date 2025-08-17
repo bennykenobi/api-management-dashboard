@@ -23,6 +23,11 @@ class APIManagementDashboard {
                 this.fallbackContextDetection();
             }
             
+            // Test the GitHub API connection
+            if (this.repoOwner && this.repoName) {
+                await this.testGitHubConnection();
+            }
+            
             await this.loadData();
             console.log('Data loaded successfully');
             this.setupEventListeners();
@@ -101,7 +106,56 @@ class APIManagementDashboard {
             return;
         }
         
-        console.warn('Fallback context detection failed');
+        // TEMPORARY HARDCODED FALLBACK FOR TESTING
+        // Based on the error, it seems like the repository name is "api-management-dashboard"
+        // and the owner might be "bennykenobi" or similar
+        console.log('Attempting hardcoded fallback...');
+        
+        // Try to extract username from the hostname
+        const hostname = window.location.hostname;
+        if (hostname.includes('github.io')) {
+            const username = hostname.split('.')[0];
+            console.log(`Extracted username from hostname: ${username}`);
+            
+            // Try common repository names
+            const possibleRepoNames = ['api-management-dashboard', 'API-Management'];
+            for (const repoName of possibleRepoNames) {
+                console.log(`Trying repository name: ${repoName}`);
+                this.repoOwner = username;
+                this.repoName = repoName;
+                console.log(`Hardcoded fallback set: ${this.repoOwner}/${this.repoName}`);
+                return;
+            }
+        }
+        
+        console.warn('All fallback context detection methods failed');
+    }
+    
+    async testGitHubConnection() {
+        try {
+            console.log(`Testing GitHub API connection for ${this.repoOwner}/${this.repoName}...`);
+            
+            // Test with a simple API call to verify the repository exists
+            const testUrl = `https://api.github.com/repos/${this.repoOwner}/${this.repoName}`;
+            console.log(`Testing URL: ${testUrl}`);
+            
+            const response = await fetch(testUrl);
+            if (response.ok) {
+                const repoData = await response.json();
+                console.log('✅ GitHub API connection successful!');
+                console.log('Repository details:', {
+                    name: repoData.name,
+                    full_name: repoData.full_name,
+                    description: repoData.description,
+                    html_url: repoData.html_url
+                });
+            } else {
+                console.error(`❌ GitHub API test failed: ${response.status} ${response.statusText}`);
+                console.error('This suggests the repository context is incorrect');
+            }
+        } catch (error) {
+            console.error('❌ GitHub API connection test failed:', error);
+        }
     }
 
     async loadData() {
