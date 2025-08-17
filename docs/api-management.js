@@ -30,6 +30,7 @@ class APIManagementDashboard {
             
             // Test the GitHub API connection
             if (this.repoOwner && this.repoName) {
+                console.log(`🔍 Before testGitHubConnection - repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
                 await this.testGitHubConnection();
             }
             
@@ -79,6 +80,8 @@ class APIManagementDashboard {
                 this.repoOwner = username;
                 // The first path part is the repository name (remove .html if present)
                 this.repoName = pathParts[0].replace('.html', '');
+                console.log(`✅ Setting repoOwner to: "${this.repoOwner}"`);
+                console.log(`✅ Setting repoName to: "${this.repoName}"`);
                 console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             } else {
                 console.warn('❌ No path parts to detect repository context');
@@ -91,6 +94,7 @@ class APIManagementDashboard {
         }
         
         console.log('Final context:', { repoOwner: this.repoOwner, repoName: this.repoName });
+        console.log(`Final context values - Owner: "${this.repoOwner}", Name: "${this.repoName}"`);
         console.log('=== GITHUB CONTEXT DETECTION END ===');
     }
     
