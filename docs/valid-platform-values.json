@@ -1,17 +1,29 @@
 {
-    "validTeamNames":  [
-                           "Platform Team",
-                           "Integration Team",
-                           "Data Team"
-                       ],
-    "validCmdbTeamNames":  [
-                               "PLATFORM_TEAM",
-                               "INTEGRATION_TEAM",
-                               "DATA_TEAM"
-                           ],
-    "validBusinessGroups":  [
-                                "Core Platform",
-                                "Customer Experience",
-                                "Data \u0026 Analytics"
-                            ]
+  "validTeamNames": [
+    {
+      "name": "Platform Team",
+      "owner": "John Doe",
+      "ownerEmail": "john.doe@company.com"
+    },
+    {
+      "name": "Integration Team", 
+      "owner": "Jane Smith",
+      "ownerEmail": "jane.smith@company.com"
+    },
+    {
+      "name": "Data Team",
+      "owner": "Bob Johnson", 
+      "ownerEmail": "bob.johnson@company.com"
+    }
+  ],
+  "validCmdbAssignmentGroups": [
+    "PLATFORM_TEAM",
+    "INTEGRATION_TEAM", 
+    "DATA_TEAM"
+  ],
+  "validBusinessGroups": [
+    "Core Platform",
+    "Customer Experience",
+    "Data & Analytics"
+  ]
 }
