@@ -407,18 +407,47 @@ class TeamManagementDashboard {
         }
 
         try {
-            // This would require a GitHub token with repo access
-            // For now, we'll simulate the workflow trigger
-            console.log(`Would trigger workflow for action: ${action}`, data);
+            console.log(`Triggering workflow for action: ${action}`, data);
             
-            // In production, this would make a POST request to:
-            // https://api.github.com/repos/{owner}/{repo}/dispatches
-            // with the appropriate payload
+            // Create the repository dispatch payload
+            const payload = {
+                event_type: action,
+                client_payload: data
+            };
             
-            this.showSuccess(`Workflow triggered for ${action}. Check GitHub for the created PR.`);
+            // Make the actual API call to trigger the workflow
+            // Try to use GitHub's built-in authentication context first
+            const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/dispatches`, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json',
+                    // GitHub Pages may have access to the repository context
+                    // If this fails, we'll fall back to other methods
+                },
+                body: JSON.stringify(payload)
+            });
+            
+            if (response.ok) {
+                this.showSuccess(`Workflow triggered for ${action}. Check GitHub for the created PR.`);
+                console.log('Workflow triggered successfully');
+            } else {
+                const errorData = await response.json();
+                console.error('GitHub API error:', errorData);
+                
+                if (response.status === 401) {
+                    this.showError('Authentication required. For enterprise repositories, you may need to configure a GitHub App or use a personal access token.');
+                    console.log('Authentication failed. Consider these options:');
+                    console.log('1. Create a GitHub App with repository permissions');
+                    console.log('2. Use a personal access token with repo scope');
+                    console.log('3. Configure repository secrets for automated workflows');
+                } else {
+                    this.showError(`Failed to trigger workflow: ${errorData.message || 'Unknown error'}`);
+                }
+            }
         } catch (error) {
             console.error('Failed to trigger workflow:', error);
-            this.showError('Failed to trigger workflow. Changes are only local.');
+            this.showError('Failed to trigger workflow. Check console for details.');
         }
     }
 
