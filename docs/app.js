@@ -16,6 +16,7 @@ class TeamManagementDashboard {
             console.log('Starting dashboard initialization...');
             await this.detectGitHubContext();
             console.log('GitHub context detected:', { repoOwner: this.repoOwner, repoName: this.repoName });
+            console.log(`🔍 Before loadData - repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
             await this.loadData();
             console.log('Data loaded successfully');
             this.setupEventListeners();
@@ -61,6 +62,8 @@ class TeamManagementDashboard {
                 this.repoOwner = username;
                 // The first path part is the repository name (remove .html if present)
                 this.repoName = pathParts[0].replace('.html', '');
+                console.log(`✅ Setting repoOwner to: "${this.repoOwner}"`);
+                console.log(`✅ Setting repoName to: "${this.repoName}"`);
                 console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             } else {
                 console.warn('❌ No path parts to detect repository context');
@@ -92,6 +95,7 @@ class TeamManagementDashboard {
             if (this.repoOwner && this.repoName) {
                 // Load from GitHub API - files are in the docs/ directory
                 const fullPath = `docs/${filePath}`;
+                console.log(`🔍 In loadFile - repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
                 console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${fullPath}`);
                 const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`);
                 if (!response.ok) throw new Error(`Failed to load ${fullPath}`);
