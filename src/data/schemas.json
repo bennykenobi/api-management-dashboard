@@ -1,0 +1,93 @@
+{
+  "teamsSchema": {
+    "type": "object",
+    "properties": {
+      "validTeamNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      },
+      "validCmdbTeamNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      },
+      "validBusinessGroups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "required": ["validTeamNames", "validCmdbTeamNames", "validBusinessGroups"]
+  },
+  "apiRegistrySchema": {
+    "type": "object",
+    "properties": {
+      "teamName": {
+        "type": "string",
+        "description": "Must match a value in teams.json validTeamNames array"
+      },
+      "apis": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "apiName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "assetId": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-zA-Z0-9-_]+$"
+            },
+            "apiOwner": {
+              "type": "string",
+              "minLength": 1
+            },
+            "teamName": {
+              "type": "string",
+              "description": "Must match the parent teamName"
+            },
+            "apiOwnerEmail": {
+              "type": "string",
+              "format": "email"
+            },
+            "munitExempt": {
+              "type": "boolean"
+            },
+            "customCoverage": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Required if munitExempt is true"
+            },
+            "businessGroups": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "description": "Must contain values from teams.json validBusinessGroups array"
+            },
+            "lastUpdated": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "apiName", "assetId", "apiOwner", "teamName", 
+            "apiOwnerEmail", "munitExempt", "businessGroups", "lastUpdated"
+          ]
+        }
+      }
+    },
+    "required": ["teamName", "apis"]
+  }
+} 

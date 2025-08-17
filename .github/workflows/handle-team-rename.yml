@@ -1,0 +1,127 @@
+name: Handle Team Rename (Cascade Update)
+
+on:
+  repository_dispatch:
+    types: [team-rename]
+
+jobs:
+  cascade-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Parse rename payload
+        id: parse-rename
+        run: |
+          echo "old_name=$(echo '${{ github.event.client_payload.oldName }}' | jq -r '.')" >> $GITHUB_OUTPUT
+          echo "new_name=$(echo '${{ github.event.client_payload.newName }}' | jq -r '.')" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          
+      - name: Update teams.json
+        run: |
+          old_name="${{ steps.parse-rename.outputs.old_name }}"
+          new_name="${{ steps.parse-rename.outputs.new_name }}"
+          
+          # Update teams.json
+          teams_file="src/data/teams.json"
+          teams_data=$(cat "$teams_file")
+          
+          # Replace old team name with new one
+          teams_data=$(echo "$teams_data" | jq --arg old "$old_name" --arg new "$new_name" '
+            .validTeamNames |= map(if . == $old then $new else . end)
+          ')
+          
+          # Save updated teams.json
+          echo "$teams_data" | jq '.' > "$teams_file"
+          
+      - name: Rename team API file
+        run: |
+          old_name="${{ steps.parse-rename.outputs.old_name }}"
+          new_name="${{ steps.parse-rename.outputs.new_name }}"
+          
+          old_file="src/data/$(echo "$old_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          new_file="src/data/$(echo "$new_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          
+          if [ -f "$old_file" ]; then
+            # Read old file content
+            content=$(cat "$old_file")
+            
+            # Update team name in content
+            content=$(echo "$content" | jq --arg new "$new_name" '.teamName = $new')
+            
+            # Update team name in all APIs
+            content=$(echo "$content" | jq --arg new "$new_name" '.apis |= map(.teamName = $new)')
+            
+            # Write to new file
+            echo "$content" | jq '.' > "$new_file"
+            
+            # Remove old file
+            rm "$old_file"
+          fi
+          
+      - name: Update all API files for team name references
+        run: |
+          old_name="${{ steps.parse-rename.outputs.old_name }}"
+          new_name="${{ steps.parse-rename.outputs.new_name }}"
+          
+          # Find all team API files
+          for file in src/data/*-mule-apis.json; do
+            if [ -f "$file" ]; then
+              # Update any references to the old team name
+              content=$(cat "$file")
+              updated_content=$(echo "$content" | jq --arg old "$old_name" --arg new "$new_name" '
+                .apis |= map(if .teamName == $old then .teamName = $new else . end)
+              ')
+              
+              # Save if changes were made
+              if [ "$content" != "$updated_content" ]; then
+                echo "$updated_content" | jq '.' > "$file"
+                echo "Updated team references in $file"
+              fi
+            fi
+          done
+          
+      - name: Commit cascade changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Cascade Update: Renamed team '${{ steps.parse-rename.outputs.old_name }}' to '${{ steps.parse-rename.outputs.new_name }}'"
+          
+      - name: Create Pull Request for Cascade Update
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Cascade Update: Team Rename - ${{ steps.parse-rename.outputs.old_name }} → ${{ steps.parse-rename.outputs.new_name }}"
+          body: |
+            ## Team Rename Cascade Update
+            
+            **Old Team Name:** ${{ steps.parse-rename.outputs.old_name }}
+            **New Team Name:** ${{ steps.parse-rename.outputs.new_name }}
+            **Timestamp:** ${{ steps.parse-rename.outputs.timestamp }}
+            
+            This PR was automatically created to handle a team rename operation.
+            
+            ### Changes Made:
+            - Updated team name in `teams.json`
+            - Renamed team API file from `${{ steps.parse-rename.outputs.old_name }}-mule-apis.json` to `${{ steps.parse-rename.outputs.new_name }}-mule-apis.json`
+            - Updated all API references to use the new team name
+            - Updated file content to reflect the new team name
+            
+            ### Files Modified:
+            - `src/data/teams.json`
+            - `src/data/${{ steps.parse-rename.outputs.old_name }}-mule-apis.json` → `src/data/${{ steps.parse-rename.outputs.new_name }}-mule-apis.json`
+            - Any other API files that referenced the old team name
+            
+            Please review the changes carefully as this affects multiple files.
+            
+          branch: team-rename-${{ github.run_id }}
+          delete-branch: true
+          labels: team-rename, cascade-update, automated 

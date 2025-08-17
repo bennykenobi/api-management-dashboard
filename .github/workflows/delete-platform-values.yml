@@ -1,0 +1,147 @@
+name: Delete Platform Values
+
+on:
+  repository_dispatch:
+    types: [delete-platform-values]
+
+jobs:
+  delete-values:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Parse payload
+        id: parse-payload
+        run: |
+          array_type=$(echo '${{ github.event.client_payload.arrayType }}' | jq -r '.')
+          value=$(echo '${{ github.event.client_payload.value }}' | jq -r '.')
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          
+          echo "array_type=$array_type" >> $GITHUB_OUTPUT
+          echo "value=$value" >> $GITHUB_OUTPUT
+          echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
+          
+      - name: Validate payload
+        run: |
+          if [ -z "${{ steps.parse-payload.outputs.array_type }}" ]; then
+            echo "Error: arrayType is required"
+            exit 1
+          fi
+          
+          if [ -z "${{ steps.parse-payload.outputs.value }}" ]; then
+            echo "Error: value is required"
+            exit 1
+          fi
+          
+          # Validate array type
+          case "${{ steps.parse-payload.outputs.array_type }}" in
+            "teamNames"|"cmdbGroups"|"businessGroups")
+              echo "Valid array type: ${{ steps.parse-payload.outputs.array_type }}"
+              ;;
+            *)
+              echo "Error: Invalid array type. Must be: teamNames, cmdbGroups, or businessGroups"
+              exit 1
+              ;;
+          esac
+          
+      - name: Load current values and check existence
+        id: load-values
+        run: |
+          values_file="src/data/valid-platform-values.json"
+          current_data=$(cat "$values_file")
+          
+          # Determine array key
+          array_key=""
+          case "${{ steps.parse-payload.outputs.array_type }}" in
+            "teamNames")
+              array_key="validTeamNames"
+              ;;
+            "cmdbGroups")
+              array_key="validCmdbTeamNames"
+              ;;
+            "businessGroups")
+              array_key="validBusinessGroups"
+              ;;
+          esac
+          
+          # Check if value exists
+          if ! echo "$current_data" | jq -e --arg val "${{ steps.parse-payload.outputs.value }}" ".$array_key | contains([\$val])" > /dev/null; then
+            echo "Error: Value '${{ steps.parse-payload.outputs.value }}' does not exist in $array_key"
+            exit 1
+          fi
+          
+          echo "array_key=$array_key" >> $GITHUB_OUTPUT
+          
+          # Check for dependencies if deleting team name
+          if [ "$array_key" = "validTeamNames" ]; then
+            # Check if team has API files
+            team_file="src/data/$(echo "${{ steps.parse-payload.outputs.value }}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            if [ -f "$team_file" ]; then
+              echo "Warning: Team '${{ steps.parse-payload.outputs.value }}' has API files. Consider redistributing APIs first."
+              echo "team_has_apis=true" >> $GITHUB_OUTPUT
+            else
+              echo "team_has_apis=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+      - name: Delete value
+        run: |
+          values_file="src/data/valid-platform-values.json"
+          current_data=$(cat "$values_file")
+          
+          # Remove the value from the appropriate array
+          updated_data=$(echo "$current_data" | jq --arg val "${{ steps.parse-payload.outputs.value }}" --arg key "${{ steps.load-values.outputs.array_key }}" '
+            .[$key] |= map(select(. != $val))
+          ')
+          
+          # Save updated file
+          echo "$updated_data" | jq '.' > "$values_file"
+          
+          echo "Deleted '${{ steps.parse-payload.outputs.value }}' from ${{ steps.load-values.outputs.array_key }}"
+          
+      - name: Handle team deletion (if applicable)
+        if: steps.load-values.outputs.team_has_apis == 'true'
+        run: |
+          echo "Warning: Team '${{ steps.parse-payload.outputs.value }}' was deleted but has API files."
+          echo "The API files will remain but may cause validation issues."
+          echo "Consider redistributing the APIs to other teams."
+          
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Delete Platform Value: ${{ steps.parse-payload.outputs.value }} from ${{ steps.parse-payload.outputs.array_type }}"
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Delete Platform Value: ${{ steps.parse-payload.outputs.value }}"
+          body: |
+            ## Delete Platform Value
+            
+            **Array Type:** ${{ steps.parse-payload.outputs.array_type }}
+            **Value Deleted:** ${{ steps.parse-payload.outputs.value }}
+            **Timestamp:** ${{ steps.parse-payload.outputs.timestamp }}
+            
+            This PR was automatically created to remove a value from the platform configuration.
+            
+            ### Changes Made:
+            - Removed `${{ steps.parse-payload.outputs.value }}` from `${{ steps.parse-payload.outputs.array_type }}` array
+            - Updated `src/data/valid-platform-values.json`
+            
+            ${{ steps.load-values.outputs.team_has_apis == 'true' && '⚠️ **Warning:** This team has API files that may need redistribution.' || '' }}
+            
+            Please review and merge if the deletion looks correct.
+            
+          branch: delete-platform-value-${{ github.run_id }}
+          delete-branch: true
+          labels: platform-values, delete, automated 

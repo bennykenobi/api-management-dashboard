@@ -1,0 +1,163 @@
+name: Handle Dashboard Updates
+
+on:
+  repository_dispatch:
+    types: [dashboard-update]
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Parse update payload
+        id: parse-payload
+        run: |
+          echo "action=$(echo '${{ github.event.client_payload.action }}' | jq -r '.')" >> $GITHUB_OUTPUT
+          echo "data=$(echo '${{ github.event.client_payload.data }}' | jq -c '.')" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          
+      - name: Update teams.json
+        if: steps.parse-payload.outputs.action == 'update-teams'
+        run: |
+          # Load current teams.json
+          teams_file="src/data/teams.json"
+          teams_data=$(cat "$teams_file")
+          
+          # Parse the update data
+          update_data='${{ steps.parse-payload.outputs.data }}'
+          
+          # Update the appropriate arrays based on the action
+          if [[ "$update_data" == *"addTeam"* ]]; then
+            # Add new team
+            team_name=$(echo "$update_data" | jq -r '.teamName')
+            cmdb_name=$(echo "$update_data" | jq -r '.cmdbTeamName')
+            business_groups=$(echo "$update_data" | jq -r '.businessGroups[]')
+            
+            # Add to validTeamNames if not exists
+            if ! echo "$teams_data" | jq -e --arg team "$team_name" '.validTeamNames | contains([$team])' > /dev/null; then
+              teams_data=$(echo "$teams_data" | jq --arg team "$team_name" '.validTeamNames += [$team]')
+            fi
+            
+            # Add to validCmdbTeamNames if not exists
+            if ! echo "$teams_data" | jq -e --arg cmdb "$cmdb_name" '.validCmdbTeamNames | contains([$cmdb])' > /dev/null; then
+              teams_data=$(echo "$teams_data" | jq --arg cmdb "$cmdb_name" '.validCmdbTeamNames += [$cmdb]')
+            fi
+            
+            # Add new business groups if not exists
+            for bg in $business_groups; do
+              if ! echo "$teams_data" | jq -e --arg bg "$bg" '.validBusinessGroups | contains([$bg])' > /dev/null; then
+                teams_data=$(echo "$teams_data" | jq --arg bg "$bg" '.validBusinessGroups += [$bg]')
+              fi
+            done
+          fi
+          
+          # Save updated teams.json
+          echo "$teams_data" | jq '.' > "$teams_file"
+          
+      - name: Create team API file
+        if: steps.parse-payload.outputs.action == 'add-team'
+        run: |
+          # Parse team data
+          team_name=$(echo '${{ steps.parse-payload.outputs.data }}' | jq -r '.teamName')
+          file_name="src/data/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          
+          # Create new team API file
+          cat > "$file_name" << EOF
+          {
+            "teamName": "$team_name",
+            "apis": []
+          }
+          EOF
+          
+      - name: Update API file
+        if: steps.parse-payload.outputs.action == 'update-api'
+        run: |
+          # Parse API data
+          update_data='${{ steps.parse-payload.outputs.data }}'
+          team_name=$(echo "$update_data" | jq -r '.teamName')
+          asset_id=$(echo "$update_data" | jq -r '.assetId')
+          
+          # Find the team's API file
+          file_name="src/data/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          
+          if [ -f "$file_name" ]; then
+            # Load current API data
+            api_data=$(cat "$file_name")
+            
+            # Check if API already exists
+            if echo "$api_data" | jq -e --arg id "$asset_id" '.apis[] | select(.assetId == $id)' > /dev/null; then
+              # Update existing API
+              api_data=$(echo "$api_data" | jq --arg id "$asset_id" --argjson new "$update_data" '
+                .apis |= map(if .assetId == $id then $new else . end)
+              ')
+            else
+              # Add new API
+              api_data=$(echo "$api_data" | jq --argjson new "$update_data" '.apis += [$new]')
+            fi
+            
+            # Save updated file
+            echo "$api_data" | jq '.' > "$file_name"
+          fi
+          
+      - name: Delete API
+        if: steps.parse-payload.outputs.action == 'delete-api'
+        run: |
+          # Parse delete data
+          delete_data='${{ steps.parse-payload.outputs.data }}'
+          team_name=$(echo "$delete_data" | jq -r '.teamName')
+          asset_id=$(echo "$delete_data" | jq -r '.assetId')
+          
+          # Find the team's API file
+          file_name="src/data/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          
+          if [ -f "$file_name" ]; then
+            # Load current API data and remove the API
+            api_data=$(cat "$file_name")
+            api_data=$(echo "$api_data" | jq --arg id "$asset_id" '.apis |= map(select(.assetId != $id))')
+            
+            # Save updated file
+            echo "$api_data" | jq '.' > "$file_name"
+          fi
+          
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Dashboard Update: ${{ steps.parse-payload.outputs.action }} - ${{ steps.parse-payload.outputs.timestamp }}"
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Dashboard Update: ${{ steps.parse-payload.outputs.action }}"
+          body: |
+            ## Automated Dashboard Update
+            
+            **Action:** ${{ steps.parse-payload.outputs.action }}
+            **Timestamp:** ${{ steps.parse-payload.outputs.timestamp }}
+            
+            This PR was automatically created by the dashboard to update the API management data.
+            
+            Please review the changes and merge if everything looks correct.
+            
+            ### Changes Made:
+            - Updated data files based on dashboard action
+            - All changes are tracked and auditable
+            
+          branch: dashboard-update-${{ github.run_id }}
+          delete-branch: true
+          labels: dashboard-update, automated 

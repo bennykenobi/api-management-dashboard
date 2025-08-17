@@ -1,0 +1,126 @@
+name: Add Platform Values
+
+on:
+  repository_dispatch:
+    types: [add-platform-values]
+
+jobs:
+  add-values:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Parse payload
+        id: parse-payload
+        run: |
+          array_type=$(echo '${{ github.event.client_payload.arrayType }}' | jq -r '.')
+          value=$(echo '${{ github.event.client_payload.value }}' | jq -r '.')
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          
+          echo "array_type=$array_type" >> $GITHUB_OUTPUT
+          echo "value=$value" >> $GITHUB_OUTPUT
+          echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
+          
+      - name: Validate payload
+        run: |
+          if [ -z "${{ steps.parse-payload.outputs.array_type }}" ]; then
+            echo "Error: arrayType is required"
+            exit 1
+          fi
+          
+          if [ -z "${{ steps.parse-payload.outputs.value }}" ]; then
+            echo "Error: value is required"
+            exit 1
+          fi
+          
+          # Validate array type
+          case "${{ steps.parse-payload.outputs.array_type }}" in
+            "teamNames"|"cmdbGroups"|"businessGroups")
+              echo "Valid array type: ${{ steps.parse-payload.outputs.array_type }}"
+              ;;
+            *)
+              echo "Error: Invalid array type. Must be: teamNames, cmdbGroups, or businessGroups"
+              exit 1
+              ;;
+          esac
+          
+      - name: Load current values
+        id: load-values
+        run: |
+          values_file="src/data/valid-platform-values.json"
+          current_data=$(cat "$values_file")
+          
+          # Check if value already exists
+          array_key=""
+          case "${{ steps.parse-payload.outputs.array_type }}" in
+            "teamNames")
+              array_key="validTeamNames"
+              ;;
+            "cmdbGroups")
+              array_key="validCmdbTeamNames"
+              ;;
+            "businessGroups")
+              array_key="validBusinessGroups"
+              ;;
+          esac
+          
+          # Check for duplicates
+          if echo "$current_data" | jq -e --arg val "${{ steps.parse-payload.outputs.value }}" ".$array_key | contains([\$val])" > /dev/null; then
+            echo "Error: Value '${{ steps.parse-payload.outputs.value }}' already exists in $array_key"
+            exit 1
+          fi
+          
+          echo "array_key=$array_key" >> $GITHUB_OUTPUT
+          
+      - name: Add new value
+        run: |
+          values_file="src/data/valid-platform-values.json"
+          current_data=$(cat "$values_file")
+          
+          # Add the new value to the appropriate array
+          updated_data=$(echo "$current_data" | jq --arg val "${{ steps.parse-payload.outputs.value }}" --arg key "${{ steps.load-values.outputs.array_key }}" '
+            .[$key] += [$val]
+          ')
+          
+          # Save updated file
+          echo "$updated_data" | jq '.' > "$values_file"
+          
+          echo "Added '${{ steps.parse-payload.outputs.value }}' to ${{ steps.load-values.outputs.array_key }}"
+          
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "Add Platform Value: ${{ steps.parse-payload.outputs.value }} to ${{ steps.parse-payload.outputs.array_type }}"
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Add Platform Value: ${{ steps.parse-payload.outputs.value }}"
+          body: |
+            ## Add Platform Value
+            
+            **Array Type:** ${{ steps.parse-payload.outputs.array_type }}
+            **Value Added:** ${{ steps.parse-payload.outputs.value }}
+            **Timestamp:** ${{ steps.parse-payload.outputs.timestamp }}
+            
+            This PR was automatically created to add a new value to the platform configuration.
+            
+            ### Changes Made:
+            - Added `${{ steps.parse-payload.outputs.value }}` to `${{ steps.parse-payload.outputs.array_type }}` array
+            - Updated `src/data/valid-platform-values.json`
+            
+            Please review and merge if the addition looks correct.
+            
+          branch: add-platform-value-${{ github.run_id }}
+          delete-branch: true
+          labels: platform-values, add, automated 
