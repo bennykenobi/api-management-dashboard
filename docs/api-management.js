@@ -45,9 +45,13 @@ class APIManagementDashboard {
     async detectGitHubContext() {
         if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
             const pathParts = window.location.pathname.split('/');
+            console.log('GitHub Pages path parts:', pathParts);
+            
+            // GitHub Pages URL structure: /username/repository-name/
             if (pathParts.length >= 3) {
                 this.repoOwner = pathParts[1];
-                this.repoName = pathParts[2];
+                // Remove any .html extension from the repository name
+                this.repoName = pathParts[2].replace('.html', '');
                 console.log(`Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
             }
         } else {
