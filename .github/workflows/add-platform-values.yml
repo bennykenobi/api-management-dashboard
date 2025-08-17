@@ -25,7 +25,7 @@ jobs:
           teamName=$(echo '${{ github.event.client_payload.teamName }}' | jq -r '.')
           teamOwner=$(echo '${{ github.event.client_payload.teamOwner }}' | jq -r '.')
           teamOwnerEmail=$(echo '${{ github.event.client_payload.teamOwnerEmail }}' | jq -r '.')
-          cmdbAssignmentGroup=$(echo '${{ github.event.client_payload.cmdbAssignmentGroup }}' | jq -r '.')
+          cmdbTeamName=$(echo '${{ github.event.client_payload.cmdbTeamName }}' | jq -r '.')
           businessGroup=$(echo '${{ github.event.client_payload.businessGroup }}' | jq -r '.')
           timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           
@@ -33,7 +33,7 @@ jobs:
           echo "teamName=$teamName" >> $GITHUB_OUTPUT
           echo "teamOwner=$teamOwner" >> $GITHUB_OUTPUT
           echo "teamOwnerEmail=$teamOwnerEmail" >> $GITHUB_OUTPUT
-          echo "cmdbAssignmentGroup=$cmdbAssignmentGroup" >> $GITHUB_OUTPUT
+          echo "cmdbTeamName=$cmdbTeamName" >> $GITHUB_OUTPUT
           echo "businessGroup=$businessGroup" >> $GITHUB_OUTPUT
           echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
           
@@ -46,11 +46,11 @@ jobs:
           
           # Validate action type
           case "${{ steps.parse-payload.outputs.action }}" in
-            "add-team"|"add-cmdb-assignment-group"|"add-business-group")
+            "add-team"|"add-business-group")
               echo "Valid action: ${{ steps.parse-payload.outputs.action }}"
               ;;
             *)
-              echo "Error: Invalid action. Must be: add-team, add-cmdb-assignment-group, or add-business-group"
+              echo "Error: Invalid action. Must be: add-team or add-business-group"
               exit 1
               ;;
           esac
@@ -86,11 +86,13 @@ jobs:
               echo "Error: Team '$team_name' already exists"
               exit 1
             fi
-          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
-            cmdb_group='${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}'
-            if echo "$current_data" | jq -e --arg group "$cmdb_group" '.validCmdbAssignmentGroups | contains([$group])' > /dev/null; then
-              echo "Error: CMDB Assignment Group '$cmdb_group' already exists"
-              exit 1
+            
+            # Check if CMDB assignment group exists and add it if not
+            cmdb_team_name='${{ steps.parse-payload.outputs.cmdbTeamName }}'
+            if [ -n "$cmdb_team_name" ] && [ "$cmdb_team_name" != "null" ]; then
+              if ! echo "$current_data" | jq -e --arg group "$cmdb_team_name" '.validCmdbAssignmentGroups | contains([$group])' > /dev/null; then
+                echo "Will add CMDB Assignment Group '$cmdb_team_name' automatically"
+              fi
             fi
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             business_group='${{ steps.parse-payload.outputs.businessGroup }}'
@@ -111,9 +113,15 @@ jobs:
             team_object=$(jq -n --arg name '${{ steps.parse-payload.outputs.teamName }}' --arg owner '${{ steps.parse-payload.outputs.teamOwner }}' --arg email '${{ steps.parse-payload.outputs.teamOwnerEmail }}' '{name: $name, owner: $owner, ownerEmail: $email}')
             updated_data=$(echo "$current_data" | jq --argjson team "$team_object" '.validTeamNames += [$team]')
             echo "Added team '${{ steps.parse-payload.outputs.teamName }}' with owner '${{ steps.parse-payload.outputs.teamOwner }}'"
-          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
-            updated_data=$(echo "$current_data" | jq --arg group '${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}' '.validCmdbAssignmentGroups += [$group]')
-            echo "Added CMDB Assignment Group '${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}'"
+            
+            # Automatically add CMDB assignment group if provided
+            cmdb_team_name='${{ steps.parse-payload.outputs.cmdbTeamName }}'
+            if [ -n "$cmdb_team_name" ] && [ "$cmdb_team_name" != "null" ]; then
+              if ! echo "$updated_data" | jq -e --arg group "$cmdb_team_name" '.validCmdbAssignmentGroups | contains([$group])' > /dev/null; then
+                updated_data=$(echo "$updated_data" | jq --arg group "$cmdb_team_name" '.validCmdbAssignmentGroups += [$group]')
+                echo "Automatically added CMDB Assignment Group '$cmdb_team_name'"
+              fi
+            fi
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             updated_data=$(echo "$current_data" | jq --arg group '${{ steps.parse-payload.outputs.businessGroup }}' '.validBusinessGroups += [$group]')
             echo "Added Business Group '${{ steps.parse-payload.outputs.businessGroup }}'"
@@ -144,8 +152,6 @@ jobs:
           
           if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
             commit_msg="Add Team: ${{ steps.parse-payload.outputs.teamName }} with owner ${{ steps.parse-payload.outputs.teamOwner }}"
-          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
-            commit_msg="Add CMDB Assignment Group: ${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}"
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             commit_msg="Add Business Group: ${{ steps.parse-payload.outputs.businessGroup }}"
           fi
@@ -156,7 +162,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || steps.parse-payload.outputs.action == 'add-cmdb-assignment-group' && 'Add CMDB Assignment Group' || 'Add Business Group' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.cmdbAssignmentGroup || steps.parse-payload.outputs.businessGroup }}"
+          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || 'Add Business Group' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.businessGroup }}"
           body: |
             ## Add Platform Value
             
@@ -166,9 +172,10 @@ jobs:
             This PR was automatically created to add a new value to the platform configuration.
             
             ### Changes Made:
-            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || steps.parse-payload.outputs.action == 'add-cmdb-assignment-group' && format('Added CMDB Assignment Group `{0}`', steps.parse-payload.outputs.cmdbAssignmentGroup) || format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) }}
+            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) }}
             - Updated `docs/valid-platform-values.json`
             ${{ steps.parse-payload.outputs.action == 'add-team' && '- Created team API file' || '' }}
+            ${{ steps.parse-payload.outputs.action == 'add-team' && steps.parse-payload.outputs.cmdbTeamName && steps.parse-payload.outputs.cmdbTeamName != 'null' && '- Automatically added CMDB Assignment Group' || '' }}
             
             Please review and merge if the addition looks correct.
             

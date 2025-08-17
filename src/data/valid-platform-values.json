@@ -4,7 +4,7 @@
                            "Integration Team",
                            "Data Team"
                        ],
-    "validCmdbTeamNames":  [
+    "validCmdbAssignmentGroups":  [
                                "PLATFORM_TEAM",
                                "INTEGRATION_TEAM",
                                "DATA_TEAM"
@@ -12,6 +12,6 @@
     "validBusinessGroups":  [
                                 "Core Platform",
                                 "Customer Experience",
-                                "Data \u0026 Analytics"
+                                "Data & Analytics"
                             ]
-}
+} 

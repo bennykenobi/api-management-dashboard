@@ -195,10 +195,6 @@ class TeamManagementDashboard {
                 additionalFields.style.display = 'block';
                 teamFields.style.display = 'block';
                 valueNameLabel.textContent = 'Team Name';
-            } else if (valueType === 'cmdbAssignmentGroup') {
-                additionalFields.style.display = 'none';
-                teamFields.style.display = 'none';
-                valueNameLabel.textContent = 'CMDB Assignment Group Name';
             } else if (valueType === 'businessGroup') {
                 additionalFields.style.display = 'none';
                 teamFields.style.display = 'none';
@@ -355,11 +351,6 @@ class TeamManagementDashboard {
                     teamOwnerEmail: teamOwnerEmail,
                     cmdbTeamName: cmdbTeamName,
                     businessGroups: businessGroups
-                };
-            } else if (valueType === 'cmdbAssignmentGroup') {
-                formData = {
-                    action: 'add-cmdb-assignment-group',
-                    cmdbAssignmentGroup: valueName
                 };
             } else if (valueType === 'businessGroup') {
                 formData = {
