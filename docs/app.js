@@ -48,11 +48,23 @@ class TeamManagementDashboard {
     async detectGitHubContext() {
         // Only detect GitHub context if we're actually on GitHub Pages
         if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
-            const pathParts = window.location.pathname.split('/');
-            if (pathParts.length >= 3) {
-                this.repoOwner = pathParts[1];
-                this.repoName = pathParts[2];
-                console.log(`Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
+            // Extract username from hostname (e.g., bennykenobi.github.io)
+            const username = window.location.hostname.split('.')[0];
+            console.log(`Extracted username from hostname: ${username}`);
+            
+            const pathParts = window.location.pathname.split('/').filter(part => part.length > 0);
+            console.log('GitHub Pages path parts (filtered):', pathParts);
+            console.log('Path parts length:', pathParts.length);
+            
+            // GitHub Pages URL structure: username.github.io/repository-name/page.html
+            if (pathParts.length >= 1) {
+                this.repoOwner = username;
+                // The first path part is the repository name (remove .html if present)
+                this.repoName = pathParts[0].replace('.html', '');
+                console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
+            } else {
+                console.warn('❌ No path parts to detect repository context');
+                console.log('Expected at least 1 part, got:', pathParts.length);
             }
         } else {
             // For local development, explicitly set to null
