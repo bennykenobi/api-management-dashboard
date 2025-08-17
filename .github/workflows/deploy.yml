@@ -31,10 +31,16 @@ jobs:
     - name: Setup Pages
       uses: actions/configure-pages@v4
       
+    - name: Prepare dashboard files
+      run: |
+        # Copy dashboard files to root for Pages deployment
+        cp -r src/dashboard/* ./
+        
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
-        path: './src/dashboard'
+        path: '.'
+        retention-days: 1
         
     - name: Deploy to GitHub Pages
       uses: actions/deploy-pages@v4
