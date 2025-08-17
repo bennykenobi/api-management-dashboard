@@ -76,13 +76,15 @@ class APIManagementDashboard {
         try {
             console.log(`Attempting to load file: ${filePath}`);
             if (this.repoOwner && this.repoName) {
-                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${filePath}`);
-                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${filePath}`);
-                if (!response.ok) throw new Error(`Failed to load ${filePath}`);
+                // For GitHub Pages, we need to load from the docs/ directory
+                const fullPath = `docs/${filePath}`;
+                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${fullPath}`);
+                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`);
+                if (!response.ok) throw new Error(`Failed to load ${fullPath}`);
                 
                 const data = await response.json();
                 const content = atob(data.content);
-                console.log(`Successfully loaded ${filePath} from GitHub API`);
+                console.log(`Successfully loaded ${fullPath} from GitHub API`);
                 return JSON.parse(content);
             } else {
                 console.log(`Loading from local file system: ${filePath}`);
@@ -98,21 +100,36 @@ class APIManagementDashboard {
     }
 
     async loadAllTeamAPIs() {
-        if (!this.teamsData?.validTeamNames) return;
-        
-        for (const team of this.teamsData.validTeamNames) {
-            const teamName = typeof team === 'string' ? team : team.name;
-            const fileName = `${teamName.toLowerCase().replace(/\s+/g, '-')}-mule-apis.json`;
-            try {
-                const teamAPIs = await this.loadFile(fileName);
-                this.apisData[fileName] = teamAPIs;
-            } catch (error) {
-                console.warn(`No API file found for team ${teamName}:`, error);
-                this.apisData[fileName] = {
-                    teamName: teamName,
-                    apis: []
-                };
+        try {
+            if (!this.teamsData?.validTeamNames) {
+                console.log('No team names found in teamsData');
+                return;
             }
+            
+            console.log('Loading team APIs for teams:', this.teamsData.validTeamNames);
+            
+            for (const team of this.teamsData.validTeamNames) {
+                const teamName = typeof team === 'string' ? team : team.name;
+                const fileName = `${teamName.toLowerCase().replace(/\s+/g, '-')}-mule-apis.json`;
+                console.log(`Loading APIs for team: ${teamName}, file: ${fileName}`);
+                
+                try {
+                    const teamAPIs = await this.loadFile(fileName);
+                    this.apisData[fileName] = teamAPIs;
+                    console.log(`Successfully loaded APIs for team ${teamName}:`, teamAPIs);
+                } catch (error) {
+                    console.warn(`No API file found for team ${teamName}:`, error);
+                    this.apisData[fileName] = {
+                        teamName: teamName,
+                        apis: []
+                    };
+                }
+            }
+            
+            console.log('All team APIs loaded:', this.apisData);
+        } catch (error) {
+            console.error('Error in loadAllTeamAPIs:', error);
+            throw error;
         }
     }
 
@@ -203,11 +220,18 @@ class APIManagementDashboard {
     }
 
     renderDashboard() {
-        this.renderAPIsTable();
-        this.updateTeamFilter();
-        this.renderTeamApiSummary();
-        this.renderQuickStats();
-        this.populateApiSelects();
+        try {
+            console.log('Rendering dashboard...');
+            this.renderAPIsTable();
+            this.updateTeamFilter();
+            this.renderTeamApiSummary();
+            this.renderQuickStats();
+            this.populateApiSelects();
+            console.log('Dashboard rendered successfully');
+        } catch (error) {
+            console.error('Error rendering dashboard:', error);
+            throw error;
+        }
     }
 
     renderAPIsTable() {
@@ -261,7 +285,7 @@ class APIManagementDashboard {
                     </span>
                 </td>
                 <td>${api.munitExempt ? `${api.customCoverage}%` : 'N/A'}</td>
-                <td>${api.businessGroups.map(bg => this.highlightSearch(bg)).join(', ')}</td>
+                <td>${(api.businessGroups || []).map(bg => this.highlightSearch(bg)).join(', ')}</td>
                 <td>${new Date(api.lastUpdated).toLocaleDateString()}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
@@ -279,10 +303,15 @@ class APIManagementDashboard {
     }
 
     highlightSearch(text) {
-        if (!this.currentSearchTerm) return text;
+        if (!this.currentSearchTerm || !text) return text || '';
         
-        const regex = new RegExp(`(${this.currentSearchTerm})`, 'gi');
-        return String(text).replace(regex, '<span class="search-highlight">$1</span>');
+        try {
+            const regex = new RegExp(`(${this.currentSearchTerm})`, 'gi');
+            return String(text).replace(regex, '<span class="search-highlight">$1</span>');
+        } catch (error) {
+            console.warn('Error highlighting search term:', error);
+            return String(text) || '';
+        }
     }
 
     updateTeamFilter() {
