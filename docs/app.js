@@ -406,16 +406,22 @@ class TeamManagementDashboard {
 
     async triggerGitHubWorkflow(action, data) {
         if (!this.repoOwner || !this.repoName) {
-            console.log('Not in GitHub context, skipping workflow trigger');
+            console.log('❌ Not in GitHub context, skipping workflow trigger');
+            console.log(`🔍 repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
             return;
         }
 
         try {
-            console.log(`Creating GitHub issue for action: ${action}`, data);
+            console.log(`🚀 Creating GitHub issue for action: ${action}`);
+            console.log(`📊 Form data:`, data);
+            console.log(`🔍 Repository context: ${this.repoOwner}/${this.repoName}`);
             
             // Create a GitHub issue that the workflow will monitor
             const issueTitle = `[AUTOMATED] ${action}: ${data.businessGroup || data.teamName || 'New Value'}`;
             const issueBody = this.createIssueBody(action, data);
+            
+            console.log(`📝 Issue title: "${issueTitle}"`);
+            console.log(`📄 Issue body:`, issueBody);
             
             // Create the issue payload with proper labels for workflow triggering
             const payload = {
@@ -424,32 +430,70 @@ class TeamManagementDashboard {
                 labels: ['workflow-trigger', action] // workflow-trigger label is required
             };
             
+            console.log(`📦 Payload to send:`, payload);
+            
+            // Build the API URL
+            const apiUrl = `https://api.github.com/repos/${this.repoOwner}/${this.repoName}/issues`;
+            console.log(`🌐 API URL: ${apiUrl}`);
+            
+            // Prepare headers
+            const headers = {
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            };
+            console.log(`📋 Request headers:`, headers);
+            
+            console.log(`📤 Making POST request to GitHub API...`);
+            
             // Make the API call to create an issue
-            const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/issues`, {
+            const response = await fetch(apiUrl, {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
+                headers: headers,
                 body: JSON.stringify(payload)
             });
             
+            console.log(`📥 Response received:`);
+            console.log(`   Status: ${response.status} ${response.statusText}`);
+            console.log(`   OK: ${response.ok}`);
+            console.log(`   Headers:`, Object.fromEntries(response.headers.entries()));
+            
             if (response.ok) {
                 const issue = await response.json();
-                console.log('GitHub issue created successfully:', issue);
+                console.log('✅ GitHub issue created successfully:', issue);
                 this.showSuccess('Request submitted successfully! A GitHub issue has been created and will be processed automatically. Check the Issues tab for progress.');
             } else {
-                const errorData = await response.json();
-                console.error('Failed to create GitHub issue:', errorData);
+                console.log(`❌ Request failed with status ${response.status}`);
+                
+                let errorData;
+                try {
+                    errorData = await response.json();
+                    console.error('📄 Error response body:', errorData);
+                } catch (parseError) {
+                    console.error('❌ Could not parse error response:', parseError);
+                    errorData = { message: 'Unknown error - could not parse response' };
+                }
                 
                 if (response.status === 401) {
+                    console.error('🔐 Authentication failed - 401 Unauthorized');
                     this.showError('Authentication failed. Please ensure you are logged into GitHub and have write access to this repository.');
+                } else if (response.status === 403) {
+                    console.error('🚫 Forbidden - 403 - Insufficient permissions');
+                    this.showError('Access denied. You may not have permission to create issues in this repository.');
+                } else if (response.status === 404) {
+                    console.error('🔍 Not Found - 404 - Repository or endpoint not found');
+                    this.showError(`Repository not found: ${this.repoOwner}/${this.repoName}. Please check the repository path.`);
                 } else {
+                    console.error(`❌ Unexpected error: ${response.status} ${response.statusText}`);
                     this.showError(`Failed to submit request: ${errorData.message || 'Unknown error'}`);
                 }
             }
         } catch (error) {
-            console.error('Error creating GitHub issue:', error);
+            console.error('💥 Exception during GitHub API call:', error);
+            console.error('🔍 Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
             this.showError('Error submitting request: ' + error.message);
         }
     }
