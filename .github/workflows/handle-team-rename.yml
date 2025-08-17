@@ -31,7 +31,7 @@ jobs:
           new_name="${{ steps.parse-rename.outputs.new_name }}"
           
           # Update valid-platform-values.json
-          values_file="src/data/valid-platform-values.json"
+          values_file="docs/valid-platform-values.json"
           values_data=$(cat "$values_file")
           
           # Replace old team name with new one
@@ -47,8 +47,8 @@ jobs:
           old_name="${{ steps.parse-rename.outputs.old_name }}"
           new_name="${{ steps.parse-rename.outputs.new_name }}"
           
-          old_file="src/data/$(echo "$old_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
-          new_file="src/data/$(echo "$new_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          old_file="docs/$(echo "$old_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          new_file="docs/$(echo "$new_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
           
           if [ -f "$old_file" ]; then
             # Read old file content
@@ -73,7 +73,7 @@ jobs:
           new_name="${{ steps.parse-rename.outputs.new_name }}"
           
           # Find all team API files
-          for file in src/data/*-mule-apis.json; do
+          for file in docs/*-mule-apis.json; do
             if [ -f "$file" ]; then
               # Update any references to the old team name
               content=$(cat "$file")

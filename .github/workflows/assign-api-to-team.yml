@@ -1,0 +1,141 @@
+name: Assign API to Team
+
+on:
+  repository_dispatch:
+
+jobs:
+  assign-api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: write
+      id-token: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Parse assignment payload
+        id: parse-payload
+        run: |
+          echo "api_data=$(echo '${{ github.event.client_payload.apiData }}' | jq -c '.')" >> $GITHUB_OUTPUT
+          echo "new_team=$(echo '${{ github.event.client_payload.newTeamName }}' | jq -r '.')" >> $GITHUB_OUTPUT
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          
+      - name: Load team data
+        id: load-team-data
+        run: |
+          # Load valid-platform-values.json to get team owner info
+          values_file="docs/valid-platform-values.json"
+          if [ ! -f "$values_file" ]; then
+            echo "Error: $values_file not found"
+            exit 1
+          fi
+          
+          # Find the team owner and email
+          new_team='${{ steps.parse-payload.outputs.new_team }}'
+          team_data=$(cat "$values_file" | jq --arg team "$new_team" '.validTeamNames[] | select(.name == $team)')
+          
+          if [ -z "$team_data" ]; then
+            echo "Error: Team '$new_team' not found in valid-platform-values.json"
+            exit 1
+          fi
+          
+          team_owner=$(echo "$team_data" | jq -r '.owner')
+          team_email=$(echo "$team_data" | jq -r '.ownerEmail')
+          
+          echo "team_owner=$team_owner" >> $GITHUB_OUTPUT
+          echo "team_email=$team_email" >> $GITHUB_OUTPUT
+          
+      - name: Remove API from current team file
+        run: |
+          # Parse API data to find current team
+          api_data='${{ steps.parse-payload.outputs.api_data }}'
+          asset_id=$(echo "$api_data" | jq -r '.assetId')
+          
+          # Find which team file contains this API
+          for file in docs/*-mule-apis.json; do
+            if [ -f "$file" ]; then
+              if jq -e --arg id "$asset_id" '.apis[] | select(.assetId == $id)' "$file" > /dev/null; then
+                echo "Found API in file: $file"
+                # Remove the API from this file
+                jq --arg id "$asset_id" '.apis |= map(select(.assetId != $id))' "$file" > "${file}.tmp"
+                mv "${file}.tmp" "$file"
+                echo "Removed API from $file"
+                break
+              fi
+            fi
+          done
+          
+      - name: Add API to new team file
+        run: |
+          # Parse API data
+          api_data='${{ steps.parse-payload.outputs.api_data }}'
+          new_team='${{ steps.parse-payload.outputs.new_team }}'
+          team_owner='${{ steps.load-team-data.outputs.team_owner }}'
+          team_email='${{ steps.load-team-data.outputs.team_email }}'
+          
+          # Create new team file path
+          new_team_file="docs/$(echo "$new_team" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+          
+          # Update API data with new team info
+          updated_api=$(echo "$api_data" | jq --arg team "$new_team" --arg owner "$team_owner" --arg email "$team_email" '
+            .teamName = $team |
+            .apiOwner = $owner |
+            .apiOwnerEmail = $email |
+            .lastUpdated = now | todateiso8601
+          ')
+          
+          if [ -f "$new_team_file" ]; then
+            # Add to existing file
+            jq --argjson api "$updated_api" '.apis += [$api]' "$new_team_file" > "${new_team_file}.tmp"
+            mv "${new_team_file}.tmp" "$new_team_file"
+          else
+            # Create new file
+            cat > "$new_team_file" << EOF
+          {
+            "teamName": "$new_team",
+            "apis": [$updated_api]
+          }
+          EOF
+          fi
+          
+          echo "Added API to $new_team_file"
+          
+      - name: Commit changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "API Assignment: Moved API to ${{ steps.parse-payload.outputs.new_team }} - ${{ steps.parse-payload.outputs.timestamp }}"
+          
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "API Assignment: Moved API to ${{ steps.parse-payload.outputs.new_team }}"
+          body: |
+            ## API Team Assignment
+            
+            **Action:** API reassigned to new team
+            **New Team:** ${{ steps.parse-payload.outputs.new_team }}
+            **Timestamp:** ${{ steps.parse-payload.outputs.timestamp }}
+            
+            This PR was automatically created by the dashboard to reassign an API to a different team.
+            
+            ### Changes Made:
+            - API removed from previous team file
+            - API added to new team file with updated owner/email
+            - All changes are tracked and auditable
+            
+          branch: api-assignment-${{ github.run_id }}
+          delete-branch: true
+          labels: api-assignment, automated 

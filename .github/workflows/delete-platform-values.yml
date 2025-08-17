@@ -55,7 +55,7 @@ jobs:
       - name: Load current values and check existence
         id: load-values
         run: |
-          values_file="src/data/valid-platform-values.json"
+          values_file="docs/valid-platform-values.json"
           current_data=$(cat "$values_file")
           
           # Determine array key
@@ -65,7 +65,7 @@ jobs:
               array_key="validTeamNames"
               ;;
             "cmdbGroups")
-              array_key="validCmdbTeamNames"
+              array_key="validCmdbAssignmentGroups"
               ;;
             "businessGroups")
               array_key="validBusinessGroups"
@@ -83,7 +83,7 @@ jobs:
           # Check for dependencies if deleting team name
           if [ "$array_key" = "validTeamNames" ]; then
             # Check if team has API files
-            team_file="src/data/$(echo "${{ steps.parse-payload.outputs.value }}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            team_file="docs/$(echo "${{ steps.parse-payload.outputs.value }}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
             if [ -f "$team_file" ]; then
               echo "Warning: Team '${{ steps.parse-payload.outputs.value }}' has API files. Consider redistributing APIs first."
               echo "team_has_apis=true" >> $GITHUB_OUTPUT
@@ -94,7 +94,7 @@ jobs:
           
       - name: Delete value
         run: |
-          values_file="src/data/valid-platform-values.json"
+          values_file="docs/valid-platform-values.json"
           current_data=$(cat "$values_file")
           
           # Remove the value from the appropriate array

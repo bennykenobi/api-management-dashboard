@@ -21,104 +21,154 @@ jobs:
       - name: Parse payload
         id: parse-payload
         run: |
-          array_type=$(echo '${{ github.event.client_payload.arrayType }}' | jq -r '.')
-          value=$(echo '${{ github.event.client_payload.value }}' | jq -r '.')
+          action=$(echo '${{ github.event.client_payload.action }}' | jq -r '.')
+          teamName=$(echo '${{ github.event.client_payload.teamName }}' | jq -r '.')
+          teamOwner=$(echo '${{ github.event.client_payload.teamOwner }}' | jq -r '.')
+          teamOwnerEmail=$(echo '${{ github.event.client_payload.teamOwnerEmail }}' | jq -r '.')
+          cmdbAssignmentGroup=$(echo '${{ github.event.client_payload.cmdbAssignmentGroup }}' | jq -r '.')
+          businessGroup=$(echo '${{ github.event.client_payload.businessGroup }}' | jq -r '.')
           timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           
-          echo "array_type=$array_type" >> $GITHUB_OUTPUT
-          echo "value=$value" >> $GITHUB_OUTPUT
+          echo "action=$action" >> $GITHUB_OUTPUT
+          echo "teamName=$teamName" >> $GITHUB_OUTPUT
+          echo "teamOwner=$teamOwner" >> $GITHUB_OUTPUT
+          echo "teamOwnerEmail=$teamOwnerEmail" >> $GITHUB_OUTPUT
+          echo "cmdbAssignmentGroup=$cmdbAssignmentGroup" >> $GITHUB_OUTPUT
+          echo "businessGroup=$businessGroup" >> $GITHUB_OUTPUT
           echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
           
       - name: Validate payload
         run: |
-          if [ -z "${{ steps.parse-payload.outputs.array_type }}" ]; then
-            echo "Error: arrayType is required"
+          if [ -z "${{ steps.parse-payload.outputs.action }}" ]; then
+            echo "Error: action is required"
             exit 1
           fi
           
-          if [ -z "${{ steps.parse-payload.outputs.value }}" ]; then
-            echo "Error: value is required"
-            exit 1
-          fi
-          
-          # Validate array type
-          case "${{ steps.parse-payload.outputs.array_type }}" in
-            "teamNames"|"cmdbGroups"|"businessGroups")
-              echo "Valid array type: ${{ steps.parse-payload.outputs.array_type }}"
+          # Validate action type
+          case "${{ steps.parse-payload.outputs.action }}" in
+            "add-team"|"add-cmdb-assignment-group"|"add-business-group")
+              echo "Valid action: ${{ steps.parse-payload.outputs.action }}"
               ;;
             *)
-              echo "Error: Invalid array type. Must be: teamNames, cmdbGroups, or businessGroups"
+              echo "Error: Invalid action. Must be: add-team, add-cmdb-assignment-group, or add-business-group"
               exit 1
               ;;
           esac
           
+          # Validate required fields based on action
+          if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.teamName }}" ] || [ -z "${{ steps.parse-payload.outputs.teamOwner }}" ] || [ -z "${{ steps.parse-payload.outputs.teamOwnerEmail }}" ]; then
+              echo "Error: teamName, teamOwner, and teamOwnerEmail are required for add-team"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}" ]; then
+              echo "Error: cmdbAssignmentGroup is required for add-cmdb-assignment-group"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.businessGroup }}" ]; then
+              echo "Error: businessGroup is required for add-business-group"
+              exit 1
+            fi
+          fi
+          
       - name: Load current values
         id: load-values
         run: |
-          values_file="src/data/valid-platform-values.json"
+          values_file="docs/valid-platform-values.json"
           current_data=$(cat "$values_file")
           
-          # Check if value already exists
-          array_key=""
-          case "${{ steps.parse-payload.outputs.array_type }}" in
-            "teamNames")
-              array_key="validTeamNames"
-              ;;
-            "cmdbGroups")
-              array_key="validCmdbTeamNames"
-              ;;
-            "businessGroups")
-              array_key="validBusinessGroups"
-              ;;
-          esac
-          
-          # Check for duplicates
-          if echo "$current_data" | jq -e --arg val "${{ steps.parse-payload.outputs.value }}" ".$array_key | contains([\$val])" > /dev/null; then
-            echo "Error: Value '${{ steps.parse-payload.outputs.value }}' already exists in $array_key"
-            exit 1
+          # Check if value already exists based on action
+          if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
+            team_name='${{ steps.parse-payload.outputs.teamName }}'
+            if echo "$current_data" | jq -e --arg team "$team_name" '.validTeamNames[] | select(.name == $team)' > /dev/null; then
+              echo "Error: Team '$team_name' already exists"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
+            cmdb_group='${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}'
+            if echo "$current_data" | jq -e --arg group "$cmdb_group" '.validCmdbAssignmentGroups | contains([$group])' > /dev/null; then
+              echo "Error: CMDB Assignment Group '$cmdb_group' already exists"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
+            business_group='${{ steps.parse-payload.outputs.businessGroup }}'
+            if echo "$current_data" | jq -e --arg group "$business_group" '.validBusinessGroups | contains([$group])' > /dev/null; then
+              echo "Error: Business Group '$business_group' already exists"
+              exit 1
+            fi
           fi
-          
-          echo "array_key=$array_key" >> $GITHUB_OUTPUT
           
       - name: Add new value
         run: |
-          values_file="src/data/valid-platform-values.json"
+          values_file="docs/valid-platform-values.json"
           current_data=$(cat "$values_file")
           
-          # Add the new value to the appropriate array
-          updated_data=$(echo "$current_data" | jq --arg val "${{ steps.parse-payload.outputs.value }}" --arg key "${{ steps.load-values.outputs.array_key }}" '
-            .[$key] += [$val]
-          ')
+          # Add the new value based on action
+          if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
+            # Create team object
+            team_object=$(jq -n --arg name '${{ steps.parse-payload.outputs.teamName }}' --arg owner '${{ steps.parse-payload.outputs.teamOwner }}' --arg email '${{ steps.parse-payload.outputs.teamOwnerEmail }}' '{name: $name, owner: $owner, ownerEmail: $email}')
+            updated_data=$(echo "$current_data" | jq --argjson team "$team_object" '.validTeamNames += [$team]')
+            echo "Added team '${{ steps.parse-payload.outputs.teamName }}' with owner '${{ steps.parse-payload.outputs.teamOwner }}'"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
+            updated_data=$(echo "$current_data" | jq --arg group '${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}' '.validCmdbAssignmentGroups += [$group]')
+            echo "Added CMDB Assignment Group '${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}'"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
+            updated_data=$(echo "$current_data" | jq --arg group '${{ steps.parse-payload.outputs.businessGroup }}' '.validBusinessGroups += [$group]')
+            echo "Added Business Group '${{ steps.parse-payload.outputs.businessGroup }}'"
+          fi
           
           # Save updated file
           echo "$updated_data" | jq '.' > "$values_file"
           
-          echo "Added '${{ steps.parse-payload.outputs.value }}' to ${{ steps.load-values.outputs.array_key }}"
+          # Create team API file if adding a team
+          if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
+            team_name='${{ steps.parse-payload.outputs.teamName }}'
+            file_name="docs/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
+            
+            cat > "$file_name" << EOF
+          {
+            "teamName": "$team_name",
+            "apis": []
+          }
+          EOF
+            echo "Created team API file: $file_name"
+          fi
           
       - name: Commit changes
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Add Platform Value: ${{ steps.parse-payload.outputs.value }} to ${{ steps.parse-payload.outputs.array_type }}"
+          
+          if [ "${{ steps.parse-payload.outputs.action }}" = "add-team" ]; then
+            commit_msg="Add Team: ${{ steps.parse-payload.outputs.teamName }} with owner ${{ steps.parse-payload.outputs.teamOwner }}"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
+            commit_msg="Add CMDB Assignment Group: ${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
+            commit_msg="Add Business Group: ${{ steps.parse-payload.outputs.businessGroup }}"
+          fi
+          
+          git commit -m "$commit_msg"
           
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Add Platform Value: ${{ steps.parse-payload.outputs.value }}"
+          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || steps.parse-payload.outputs.action == 'add-cmdb-assignment-group' && 'Add CMDB Assignment Group' || 'Add Business Group' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.cmdbAssignmentGroup || steps.parse-payload.outputs.businessGroup }}"
           body: |
             ## Add Platform Value
             
-            **Array Type:** ${{ steps.parse-payload.outputs.array_type }}
-            **Value Added:** ${{ steps.parse-payload.outputs.value }}
+            **Action:** ${{ steps.parse-payload.outputs.action }}
             **Timestamp:** ${{ steps.parse-payload.outputs.timestamp }}
             
             This PR was automatically created to add a new value to the platform configuration.
             
             ### Changes Made:
-            - Added `${{ steps.parse-payload.outputs.value }}` to `${{ steps.parse-payload.outputs.array_type }}` array
-            - Updated `src/data/valid-platform-values.json`
+            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || steps.parse-payload.outputs.action == 'add-cmdb-assignment-group' && format('Added CMDB Assignment Group `{0}`', steps.parse-payload.outputs.cmdbAssignmentGroup) || format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) }}
+            - Updated `docs/valid-platform-values.json`
+            ${{ steps.parse-payload.outputs.action == 'add-team' && '- Created team API file' || '' }}
             
             Please review and merge if the addition looks correct.
             
