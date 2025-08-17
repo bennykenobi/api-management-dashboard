@@ -17,6 +17,12 @@ class APIManagementDashboard {
             console.log('Starting API Management dashboard initialization...');
             await this.detectGitHubContext();
             console.log('GitHub context detected:', { repoOwner: this.repoOwner, repoName: this.repoName });
+            
+            // If context detection failed, try to extract from URL manually
+            if (!this.repoOwner || !this.repoName) {
+                this.fallbackContextDetection();
+            }
+            
             await this.loadData();
             console.log('Data loaded successfully');
             this.setupEventListeners();
@@ -43,22 +49,59 @@ class APIManagementDashboard {
     }
 
     async detectGitHubContext() {
+        console.log('Current URL:', window.location.href);
+        console.log('Hostname:', window.location.hostname);
+        console.log('Pathname:', window.location.pathname);
+        
         if (window.location.hostname === 'github.io' || window.location.hostname.includes('github.io')) {
-            const pathParts = window.location.pathname.split('/');
-            console.log('GitHub Pages path parts:', pathParts);
+            const pathParts = window.location.pathname.split('/').filter(part => part.length > 0);
+            console.log('GitHub Pages path parts (filtered):', pathParts);
             
             // GitHub Pages URL structure: /username/repository-name/
-            if (pathParts.length >= 3) {
-                this.repoOwner = pathParts[1];
+            if (pathParts.length >= 2) {
+                this.repoOwner = pathParts[0];
                 // Remove any .html extension from the repository name
-                this.repoName = pathParts[2].replace('.html', '');
+                this.repoName = pathParts[1].replace('.html', '');
                 console.log(`Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
+            } else {
+                console.warn('Not enough path parts to detect repository context');
             }
         } else {
             this.repoOwner = null;
             this.repoName = null;
             console.log('Running in local development mode with local files');
         }
+        
+        console.log('Final context:', { repoOwner: this.repoOwner, repoName: this.repoName });
+    }
+    
+    fallbackContextDetection() {
+        console.log('Attempting fallback context detection...');
+        
+        // Try to extract from the current URL
+        const url = window.location.href;
+        console.log('Current URL for fallback:', url);
+        
+        // Look for patterns like username.github.io/repository-name
+        const githubIoMatch = url.match(/https?:\/\/([^.]+)\.github\.io\/([^\/\?]+)/);
+        if (githubIoMatch) {
+            this.repoOwner = githubIoMatch[1];
+            this.repoName = githubIoMatch[2].replace('.html', '');
+            console.log(`Fallback detected: ${this.repoOwner}/${this.repoName}`);
+            return;
+        }
+        
+        // Look for patterns in the pathname
+        const pathname = window.location.pathname;
+        const pathMatch = pathname.match(/\/([^\/]+)\/([^\/\?]+)/);
+        if (pathMatch) {
+            this.repoOwner = pathMatch[1];
+            this.repoName = pathMatch[2].replace('.html', '');
+            console.log(`Path fallback detected: ${this.repoOwner}/${this.repoName}`);
+            return;
+        }
+        
+        console.warn('Fallback context detection failed');
     }
 
     async loadData() {
@@ -82,9 +125,14 @@ class APIManagementDashboard {
             if (this.repoOwner && this.repoName) {
                 // For GitHub Pages, we need to load from the docs/ directory
                 const fullPath = `docs/${filePath}`;
-                console.log(`Loading from GitHub API: ${this.repoOwner}/${this.repoName}/${fullPath}`);
-                const response = await fetch(`https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`);
-                if (!response.ok) throw new Error(`Failed to load ${fullPath}`);
+                const apiUrl = `https://api.github.com/repos/${this.repoOwner}/${this.repoName}/contents/${fullPath}`;
+                console.log(`Loading from GitHub API: ${apiUrl}`);
+                
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    console.error(`GitHub API response not OK: ${response.status} ${response.statusText}`);
+                    throw new Error(`Failed to load ${fullPath} from GitHub API: ${response.status}`);
+                }
                 
                 const data = await response.json();
                 const content = atob(data.content);
