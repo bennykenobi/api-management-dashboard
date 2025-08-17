@@ -1,7 +1,8 @@
 name: Add Platform Values
 
 on:
-  repository_dispatch:
+  issues:
+    types: [opened, edited]
 
 jobs:
   add-values:
@@ -13,28 +14,63 @@ jobs:
       id-token: write
       
     steps:
+      - name: Check if issue is a workflow request
+        id: check-issue
+        run: |
+          # Check if issue has the 'workflow-trigger' label
+          if echo '${{ github.event.issue.labels.*.name }}' | grep -q 'workflow-trigger'; then
+            echo "is_workflow_request=true" >> $GITHUB_OUTPUT
+            
+            # Extract action from labels
+            if echo '${{ github.event.issue.labels.*.name }}' | grep -q 'add-business-group'; then
+              echo "action=add-business-group" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'add-team'; then
+              echo "action=add-team" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'delete-team'; then
+              echo "action=delete-team" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "is_workflow_request=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Skip if not a workflow request
+        if: steps.check-issue.outputs.is_workflow_request != 'true'
+        run: |
+          echo "Issue does not have 'workflow-trigger' label, skipping workflow"
+          exit 0
+          
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: Parse payload
+      - name: Parse issue payload
         id: parse-payload
         run: |
-          action=$(echo '${{ github.event.client_payload.action }}' | jq -r '.')
-          teamName=$(echo '${{ github.event.client_payload.teamName }}' | jq -r '.')
-          teamOwner=$(echo '${{ github.event.client_payload.teamOwner }}' | jq -r '.')
-          teamOwnerEmail=$(echo '${{ github.event.client_payload.teamOwnerEmail }}' | jq -r '.')
-          cmdbTeamName=$(echo '${{ github.event.client_payload.cmdbTeamName }}' | jq -r '.')
-          businessGroup=$(echo '${{ github.event.client_payload.businessGroup }}' | jq -r '.')
-          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          # Extract data from issue body
+          issue_body="${{ github.event.issue.body }}"
           
+          # Extract action
+          action='${{ steps.check-issue.outputs.action }}'
           echo "action=$action" >> $GITHUB_OUTPUT
-          echo "teamName=$teamName" >> $GITHUB_OUTPUT
-          echo "teamOwner=$teamOwner" >> $GITHUB_OUTPUT
-          echo "teamOwnerEmail=$teamOwnerEmail" >> $GITHUB_OUTPUT
-          echo "cmdbTeamName=$cmdbTeamName" >> $GITHUB_OUTPUT
-          echo "businessGroup=$businessGroup" >> $GITHUB_OUTPUT
+          
+          # Extract other fields based on action
+          if [ "$action" = "add-team" ]; then
+            teamName=$(echo "$issue_body" | grep -o '**Team Name:** [^*]*' | sed 's/\*\*Team Name:\*\* //')
+            teamOwner=$(echo "$issue_body" | grep -o '**Team Owner:** [^*]*' | sed 's/\*\*Team Owner:\*\* //')
+            teamOwnerEmail=$(echo "$issue_body" | grep -o '**Owner Email:** [^*]*' | sed 's/\*\*Owner Email:\*\* //')
+            cmdbTeamName=$(echo "$issue_body" | grep -o '**CMDB Assignment Group:** [^*]*' | sed 's/\*\*CMDB Assignment Group:\*\* //')
+            
+            echo "teamName=$teamName" >> $GITHUB_OUTPUT
+            echo "teamOwner=$teamOwner" >> $GITHUB_OUTPUT
+            echo "teamOwnerEmail=$teamOwnerEmail" >> $GITHUB_OUTPUT
+            echo "cmdbTeamName=$cmdbTeamName" >> $GITHUB_OUTPUT
+          elif [ "$action" = "add-business-group" ]; then
+            businessGroup=$(echo "$issue_body" | grep -o '**Business Group:** [^*]*' | sed 's/\*\*Business Group:\*\* //')
+            echo "businessGroup=$businessGroup" >> $GITHUB_OUTPUT
+          fi
+          
+          timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
           echo "timestamp=$timestamp" >> $GITHUB_OUTPUT
           
       - name: Validate payload
@@ -46,11 +82,11 @@ jobs:
           
           # Validate action type
           case "${{ steps.parse-payload.outputs.action }}" in
-            "add-team"|"add-business-group")
+            "add-team"|"add-business-group"|"delete-team")
               echo "Valid action: ${{ steps.parse-payload.outputs.action }}"
               ;;
             *)
-              echo "Error: Invalid action. Must be: add-team or add-business-group"
+              echo "Error: Invalid action. Must be: add-team, add-business-group, or delete-team"
               exit 1
               ;;
           esac
@@ -61,14 +97,14 @@ jobs:
               echo "Error: teamName, teamOwner, and teamOwnerEmail are required for add-team"
               exit 1
             fi
-          elif [ "${{ steps.parse-payload.outputs.action }}" = "add-cmdb-assignment-group" ]; then
-            if [ -z "${{ steps.parse-payload.outputs.cmdbAssignmentGroup }}" ]; then
-              echo "Error: cmdbAssignmentGroup is required for add-cmdb-assignment-group"
-              exit 1
-            fi
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             if [ -z "${{ steps.parse-payload.outputs.businessGroup }}" ]; then
               echo "Error: businessGroup is required for add-business-group"
+              exit 1
+            fi
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "delete-team" ]; then
+            if [ -z "${{ steps.parse-payload.outputs.teamName }}" ]; then
+              echo "Error: teamName is required for delete-team"
               exit 1
             fi
           fi
@@ -125,6 +161,10 @@ jobs:
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             updated_data=$(echo "$current_data" | jq --arg group '${{ steps.parse-payload.outputs.businessGroup }}' '.validBusinessGroups += [$group]')
             echo "Added Business Group '${{ steps.parse-payload.outputs.businessGroup }}'"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "delete-team" ]; then
+            team_name='${{ steps.parse-payload.outputs.teamName }}'
+            updated_data=$(echo "$current_data" | jq --arg team "$team_name" 'del(.validTeamNames[] | select(.name == $team))')
+            echo "Removed team '$team_name' from validTeamNames"
           fi
           
           # Save updated file
@@ -135,12 +175,7 @@ jobs:
             team_name='${{ steps.parse-payload.outputs.teamName }}'
             file_name="docs/$(echo "$team_name" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')-mule-apis.json"
             
-            cat > "$file_name" << EOF
-          {
-            "teamName": "$team_name",
-            "apis": []
-          }
-          EOF
+            echo '{"teamName": "'"$team_name"'", "apis": []}' > "$file_name"
             echo "Created team API file: $file_name"
           fi
           
@@ -154,6 +189,8 @@ jobs:
             commit_msg="Add Team: ${{ steps.parse-payload.outputs.teamName }} with owner ${{ steps.parse-payload.outputs.teamOwner }}"
           elif [ "${{ steps.parse-payload.outputs.action }}" = "add-business-group" ]; then
             commit_msg="Add Business Group: ${{ steps.parse-payload.outputs.businessGroup }}"
+          elif [ "${{ steps.parse-payload.outputs.action }}" = "delete-team" ]; then
+            commit_msg="Delete Team: ${{ steps.parse-payload.outputs.teamName }}"
           fi
           
           git commit -m "$commit_msg"
@@ -162,7 +199,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || 'Add Business Group' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.businessGroup }}"
+          title: "${{ steps.parse-payload.outputs.action == 'add-team' && 'Add Team' || steps.parse-payload.outputs.action == 'add-business-group' && 'Add Business Group' || 'Delete Team' }}: ${{ steps.parse-payload.outputs.teamName || steps.parse-payload.outputs.businessGroup }}"
           body: |
             ## Add Platform Value
             
@@ -172,13 +209,26 @@ jobs:
             This PR was automatically created to add a new value to the platform configuration.
             
             ### Changes Made:
-            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) }}
+            ${{ steps.parse-payload.outputs.action == 'add-team' && format('Added team `{0}` with owner `{1}` and email `{2}`', steps.parse-payload.outputs.teamName, steps.parse-payload.outputs.teamOwner, steps.parse-payload.outputs.teamOwnerEmail) || steps.parse-payload.outputs.action == 'add-business-group' && format('Added Business Group `{0}`', steps.parse-payload.outputs.businessGroup) || format('Deleted team `{0}`', steps.parse-payload.outputs.teamName) }}
             - Updated `docs/valid-platform-values.json`
             ${{ steps.parse-payload.outputs.action == 'add-team' && '- Created team API file' || '' }}
             ${{ steps.parse-payload.outputs.action == 'add-team' && steps.parse-payload.outputs.cmdbTeamName && steps.parse-payload.outputs.cmdbTeamName != 'null' && '- Automatically added CMDB Assignment Group' || '' }}
+            
+            **Original Issue:** #${{ github.event.issue.number }}
             
             Please review and merge if the addition looks correct.
             
           branch: add-platform-value-${{ github.run_id }}
           delete-branch: true
-          labels: platform-values, add, automated 
+          labels: platform-values, add, automated
+          
+      - name: Close issue after successful processing
+        run: |
+          # Close the issue that triggered this workflow
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }} \
+            -d '{"state": "closed"}'
+          
+          echo "Closed issue #${{ github.event.issue.number }} after successful processing" 

@@ -1,0 +1,129 @@
+name: Handle Issue Requests
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  process-request:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      pages: write
+      id-token: write
+      
+    steps:
+      - name: Check if issue is automated request
+        id: check-issue
+        run: |
+          # Check if issue has the 'automated' label
+          if echo '${{ github.event.issue.labels.*.name }}' | grep -q 'automated'; then
+            echo "is_automated=true" >> $GITHUB_OUTPUT
+            
+            # Extract action from labels
+            if echo '${{ github.event.issue.labels.*.name }}' | grep -q 'add-business-group'; then
+              echo "action=add-business-group" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'add-team'; then
+              echo "action=add-team" >> $GITHUB_OUTPUT
+            elif echo '${{ github.event.issue.labels.*.name }}' | grep -q 'delete-team'; then
+              echo "action=delete-team" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "is_automated=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Process automated request
+        if: steps.check-issue.outputs.is_automated == 'true'
+        run: |
+          echo "Processing automated request: ${{ steps.check-issue.outputs.action }}"
+          
+          # Extract data from issue body
+          issue_body="${{ github.event.issue.body }}"
+          
+          if [ "${{ steps.check-issue.outputs.action }}" = "add-business-group" ]; then
+            # Extract business group name from issue body
+            business_group=$(echo "$issue_body" | grep -o '**Business Group:** [^*]*' | sed 's/\*\*Business Group:\*\* //')
+            echo "Extracted business group: $business_group"
+            
+            # Create the form data for the existing workflow
+            form_data=$(jq -n --arg action "add-business-group" --arg businessGroup "$business_group" '{action: $action, businessGroup: $businessGroup}')
+            
+            # Trigger the existing add-platform-values workflow
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "$form_data" \
+              "https://api.github.com/repos/${{ github.repository }}/dispatches"
+              
+            echo "Triggered add-platform-values workflow for business group: $business_group"
+            
+          elif [ "${{ steps.check-issue.outputs.action }}" = "add-team" ]; then
+            # Extract team data from issue body
+            team_name=$(echo "$issue_body" | grep -o '**Team Name:** [^*]*' | sed 's/\*\*Team Name:\*\* //')
+            team_owner=$(echo "$issue_body" | grep -o '**Team Owner:** [^*]*' | sed 's/\*\*Team Owner:\*\* //')
+            team_email=$(echo "$issue_body" | grep -o '**Owner Email:** [^*]*' | sed 's/\*\*Owner Email:\*\* //')
+            cmdb_team=$(echo "$issue_body" | grep -o '**CMDB Assignment Group:** [^*]*' | sed 's/\*\*CMDB Assignment Group:\*\* //')
+            
+            echo "Extracted team data:"
+            echo "  Name: $team_name"
+            echo "  Owner: $team_owner"
+            echo "  Email: $team_email"
+            echo "  CMDB: $cmdb_team"
+            
+            # Create the form data for the existing workflow
+            form_data=$(jq -n \
+              --arg action "add-team" \
+              --arg teamName "$team_name" \
+              --arg teamOwner "$team_owner" \
+              --arg teamOwnerEmail "$team_email" \
+              --arg cmdbTeamName "$cmdb_team" \
+              '{action: $action, teamName: $teamName, teamOwner: $teamOwner, teamOwnerEmail: $teamOwnerEmail, cmdbTeamName: $cmdbTeamName}')
+            
+            # Trigger the existing add-platform-values workflow
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "$form_data" \
+              "https://api.github.com/repos/${{ github.repository }}/dispatches"
+              
+            echo "Triggered add-platform-values workflow for team: $team_name"
+            
+          elif [ "${{ steps.check-issue.outputs.action }}" = "delete-team" ]; then
+            # Extract team name from issue body
+            team_name=$(echo "$issue_body" | grep -o '**Team Name:** [^*]*' | sed 's/\*\*Team Name:\*\* //')
+            
+            echo "Extracted team name for deletion: $team_name"
+            
+            # Create the form data for the delete workflow
+            form_data=$(jq -n \
+              --arg arrayType "teamNames" \
+              --arg value "$team_name" \
+              '{arrayType: $arrayType, value: $value}')
+            
+            # Trigger the existing delete-platform-values workflow
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "$form_data" \
+              "https://api.github.com/repos/${{ github.repository }}/dispatches"
+              
+            echo "Triggered delete-platform-values workflow for team: $team_name"
+          fi
+          
+      - name: Comment on issue
+        if: steps.check-issue.outputs.is_automated == 'true'
+        run: |
+          # Add a comment to the issue indicating the workflow was triggered
+          comment="✅ Automated request processed! The appropriate workflow has been triggered to handle your request.
+          
+          **Action:** ${{ steps.check-issue.outputs.action }}
+          **Status:** Workflow triggered successfully
+          
+          You can monitor the progress in the Actions tab or check for any created pull requests."
+          
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d "{\"body\":\"$comment\"}" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" 
