@@ -17,6 +17,16 @@ class TeamManagementDashboard {
             await this.detectGitHubContext();
             console.log('GitHub context detected:', { repoOwner: this.repoOwner, repoName: this.repoName });
             console.log(`🔍 Before loadData - repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
+            
+            // Debug: Check if values are correct
+            if (this.repoOwner === 'bennykenobi' && this.repoName === 'api-management-dashboard') {
+                console.log('✅ Values are correct!');
+            } else {
+                console.log('❌ Values are wrong!');
+                console.log(`Expected: bennykenobi/api-management-dashboard`);
+                console.log(`Got: ${this.repoOwner}/${this.repoName}`);
+            }
+            
             await this.loadData();
             console.log('Data loaded successfully');
             this.setupEventListeners();
@@ -65,6 +75,10 @@ class TeamManagementDashboard {
                 console.log(`✅ Setting repoOwner to: "${this.repoOwner}"`);
                 console.log(`✅ Setting repoName to: "${this.repoName}"`);
                 console.log(`✅ Detected GitHub Pages context: ${this.repoOwner}/${this.repoName}`);
+                
+                // Immediate verification
+                console.log(`🔍 IMMEDIATE CHECK - repoOwner: "${this.repoOwner}", repoName: "${this.repoName}"`);
+                console.log(`🔍 IMMEDIATE CHECK - typeof repoOwner: ${typeof this.repoOwner}, typeof repoName: ${typeof this.repoName}`);
             } else {
                 console.warn('❌ No path parts to detect repository context');
                 console.log('Expected at least 1 part, got:', pathParts.length);
